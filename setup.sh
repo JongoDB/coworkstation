@@ -102,9 +102,12 @@ ensure_target_user() {
 	fi
 	local default_user="${APPLIANCE_DEFAULT_USER:-cowork}"
 	if ! id "$default_user" > /dev/null 2>&1; then
+		# This function's stdout IS its return value (captured with
+		# $(...)), so the progress line MUST go to stderr — otherwise it
+		# pollutes $user and every later user_home lookup fails.
 		log_info "no --user given; creating default account" \
-			"'$default_user'"
-		run_cmd useradd -m -s /bin/bash "$default_user" || return 1
+			"'$default_user'" >&2
+		run_cmd useradd -m -s /bin/bash "$default_user" >&2 || return 1
 	fi
 	printf '%s' "$default_user"
 }

@@ -1,0 +1,54 @@
+#!/usr/bin/env bats
+#
+# setup.bats
+# Unit tests for setup.sh helpers whose stdout is a captured return value.
+#
+
+SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
+
+setup() {
+	TEST_TMP=$(mktemp -d)
+	export TEST_TMP
+	export APPLIANCE_ETC="$TEST_TMP/etc"
+	# Sourcing setup.sh defines its functions without running main()
+	# (main is guarded by BASH_SOURCE == $0).
+	# shellcheck source=setup.sh
+	source "$SCRIPT_DIR/../setup.sh"
+	appliance_dry_run=0
+	appliance_force=0
+}
+
+teardown() {
+	[[ -n $TEST_TMP && -d $TEST_TMP ]] && rm -rf "$TEST_TMP"
+}
+
+# Regression: ensure_target_user's stdout IS its return value, so any
+# progress logging must go to stderr. A log line leaking into stdout
+# pollutes $user and breaks every downstream user_home lookup (the
+# from-zero live install failed with exactly "no home directory for
+# '[appliance] no --user given...cowork'").
+@test "ensure_target_user: returns a CLEAN username, no log leakage" {
+	id() { return 1; }         # default account does not exist yet
+	useradd() { return 0; }    # pretend creation succeeds
+	local u
+	u=$(APPLIANCE_DEFAULT_USER=cowork ensure_target_user '')
+	[[ $u == 'cowork' ]]
+	# belt and suspenders: no stray whitespace/newline/log text
+	[[ $u != *'appliance'* ]]
+	[[ $(printf '%s' "$u" | wc -l) -eq 0 ]]
+}
+
+@test "ensure_target_user: passes an existing explicit user through" {
+	id() { [[ $1 == 'alice' ]] && return 0; return 1; }
+	local u
+	u=$(ensure_target_user alice)
+	[[ $u == 'alice' ]]
+}
+
+@test "ensure_target_user: ignores root as a candidate, mints default" {
+	id() { return 1; }
+	useradd() { return 0; }
+	local u
+	u=$(SUDO_USER=root APPLIANCE_DEFAULT_USER=cowork ensure_target_user '')
+	[[ $u == 'cowork' ]]
+}
