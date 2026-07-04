@@ -1,0 +1,57 @@
+#cloud-config
+# Claude Cowork appliance — first-boot bootstrap for a VPS/mini-PC.
+#
+# Before use, replace the two placeholders:
+#   __HOSTNAME__   public hostname (e.g. claude.example.com)
+#   __ADMIN_KEY__  the admin's SSH public key
+#
+# What this does: creates the first member account, clones the repo,
+# and runs setup.sh. Interactive steps (cloudflared tunnel
+# login, Access policy, Claude sign-in) remain manual by design —
+# they involve credentials that don't belong in user-data. The
+# first-boot README on the box lists them.
+#
+# Spec: docs/phases.md (Phase 5)
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - git
+  - curl
+  - ca-certificates
+
+users:
+  - name: cowork
+    shell: /bin/bash
+    groups: [users]
+    lock_passwd: true
+  - name: admin
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    lock_passwd: true
+    ssh_authorized_keys:
+      - __ADMIN_KEY__
+
+write_files:
+  - path: /etc/motd
+    append: true
+    content: |
+      ── Claude Cowork appliance ──────────────────────────────
+      Provisioned by cloud-init. Remaining manual steps:
+        1. cloudflared tunnel login && cloudflared tunnel create
+        2. finish /etc/cloudflared/config.yml, route DNS, install svc
+        3. add a Cloudflare Access policy for __HOSTNAME__
+        4. open the session in a browser, sign into Claude
+        5. sudo /opt/coworkstation/setup.sh doctor
+      Runbook: /opt/coworkstation/docs/runbook.md
+
+runcmd:
+  - git clone --depth 1
+    https://github.com/JongoDB/coworkstation
+    /opt/coworkstation
+  - /opt/coworkstation/setup.sh
+    --user cowork --hostname __HOSTNAME__
+  - /opt/coworkstation/setup.sh doctor --user cowork
+    || true

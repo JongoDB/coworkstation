@@ -1,0 +1,13 @@
+# secrets / local
+*.token
+.appliance-secrets/
+.env
+
+# scratch
+/tmp/
+*.log
+node_modules/
+
+# editor
+.DS_Store
+*.swp

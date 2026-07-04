@@ -1,0 +1,68 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Shellcheck, JS syntax, YAML
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Shellcheck
+        run: |
+          shellcheck -x \
+            setup.sh member.sh storage.sh gen-sshconfigs.sh \
+            testbench/setup.sh \
+            lib/*.sh lib/profiles/*.sh
+
+      - name: Node syntax check
+        run: |
+          node --check testbench/desktop-control-mcp.js
+          node --check testbench/vm-bench-mcp.js
+          node --check tests/helpers/mcp-client.js
+          node --check tests/helpers/qmp-mock-test.js
+
+      - name: Validate cloud-init YAML
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('images/cloud-init.yaml'))"
+
+  bats:
+    name: BATS (with live Xvfb e2e)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats jq xvfb xdotool imagemagick x11-apps
+
+      - name: Run BATS suites
+        run: bats --print-output-on-failure tests/*.bats
+
+      - name: Assert the live e2e ran (did not skip)
+        run: |
+          out=$(bats tests/mcp.bats 2>&1)
+          echo "$out"
+          if echo "$out" | grep -q '# skip'; then
+            echo 'live e2e was skipped on CI — dependency drift'
+            exit 1
+          fi
