@@ -2,11 +2,22 @@
 
 Turn a bare Linux box into a **self-hosted, team-accessible Claude Desktop / Cowork workstation** — reachable from any browser (iPad, Android, laptop) behind Cloudflare Access, with one command.
 
+## Install
+
+Coworkstation is an **installer/orchestrator**, not a binary app — there's no `.deb` to download because the actual Claude Desktop binary is installed *by* Coworkstation from its upstream source (see [Engine](#how-it-works) below). Two entry points:
+
 ```bash
-# Dev bootstrap: clone and run. The wizard prompts for anything missing.
+# Prod — download and run (no clone needed):
+curl -fsSL https://raw.githubusercontent.com/JongoDB/coworkstation/main/install.sh | sudo bash
+
+# Dev — clone and run. Either way an interactive wizard prompts for anything missing:
 git clone https://github.com/JongoDB/coworkstation
 sudo coworkstation/setup.sh
 ```
+
+Both accept the same flags (pipe form: `... | sudo bash -s -- --hostname …`). See [Quick start](#quick-start-zero-touch) for the non-interactive form.
+
+## How it works
 
 Coworkstation **composes upstream-maintained parts** — it consumes Claude Desktop engines rather than forking them, so it grows with the real thing:
 
@@ -38,7 +49,19 @@ sudo coworkstation/setup.sh --hostname cws.example.com \
     --cf-api-token-file /root/cf-token --access-allow you@example.com
 ```
 
-That provisions the engine, kasmVNC, the Cloudflare tunnel + DNS + Access policy, and the connector. Open `https://cws.example.com`, pass the Access login, sign into Claude. Full walkthrough: [`docs/runbook.md`](docs/runbook.md).
+That provisions the engine, kasmVNC, the Cloudflare tunnel + DNS + Access policy, and the connector. Full walkthrough: [`docs/runbook.md`](docs/runbook.md).
+
+## Signing in
+
+Two gates protect the session:
+
+1. **Cloudflare Access** (outer door) — your identity provider (Google/Entra/GitHub/OIDC) via the `--access-allow` list. This is the real security boundary; it's SSO, no separate password.
+2. **kasmVNC** (the desktop, behind Access) — a per-user login. `setup.sh` creates the control user (the Linux username, e.g. `jongodb`) with a random password written to `~/.vnc/kasm-credentials` on the box (mode `0600`). Read it once and hand it to the member:
+   ```bash
+   sudo cat /home/<user>/.vnc/kasm-credentials
+   ```
+
+Open `https://<hostname>`, pass the Access login, enter the kasmVNC credentials, then sign into Claude Desktop inside the session. The member's Claude sign-in populates the keyring on first use.
 
 ## Docs
 
@@ -49,6 +72,7 @@ That provisions the engine, kasmVNC, the Cloudflare tunnel + DNS + Access policy
 ## Layout
 
 ```
+install.sh                                         # network installer (curl | sudo bash)
 setup.sh member.sh storage.sh gen-sshconfigs.sh   # entry points
 lib/            # common, engine selection, doctor, tunnel API, session profiles
 testbench/      # computer-use-substitute MCP servers
@@ -60,7 +84,7 @@ tests/          # BATS suites (run: bats tests/*.bats)
 
 ```bash
 bats tests/*.bats            # 134 tests: pure-logic, mocked infra, live Xvfb e2e
-shellcheck -x setup.sh member.sh storage.sh gen-sshconfigs.sh lib/*.sh lib/profiles/*.sh
+shellcheck -x install.sh setup.sh member.sh storage.sh gen-sshconfigs.sh lib/*.sh lib/profiles/*.sh
 ```
 
 ## Status

@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Initial release, migrated from the `appliance/` layer of
   `aaddrick/claude-desktop-debian` (fork), as a standalone project.
+- `install.sh` — network installer (`curl … | sudo bash`) for prod, plus `setup.sh` for clone-and-run.
 - `setup.sh` — one-command provisioning with engine auto-selection
   (official Anthropic apt build with KVM; claude-desktop-debian build
   with the bwrap Cowork backend otherwise), XFCE + kasmVNC session,
