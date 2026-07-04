@@ -9,10 +9,10 @@
 # pointing Cowork at a synced Drive folder.
 #
 # Usage:
-#   sudo appliance/storage.sh add --user NAME --provider gdrive|onedrive|dropbox
+#   sudo ./storage.sh add --user NAME --provider gdrive|onedrive|dropbox
 #        --name REMOTE [--token-file FILE] [--cache-max 10G] [--dry-run]
-#   sudo appliance/storage.sh remove --user NAME --name REMOTE [--dry-run]
-#   appliance/storage.sh list --user NAME
+#   sudo ./storage.sh remove --user NAME --name REMOTE [--dry-run]
+#   ./storage.sh list --user NAME
 #
 # OAuth: run `rclone authorize "<provider>"` on any machine with a
 # browser (the member's laptop), then paste the token JSON when the
@@ -50,8 +50,13 @@ install_storage_packages() {
 	pkg_install rclone fuse3
 }
 
-# Write the member's rclone remote. Token JSON goes through a file
-# owned by the member — rclone reads `token` as a config key.
+# Write the member's rclone remote directly into their own 0600
+# rclone.conf. The OAuth token must NOT reach argv: `rclone config
+# create … token <JSON>` would put the refresh-capable provider token on
+# the child's command line, readable via /proc/<pid>/cmdline by every
+# other member on this shared box. Instead the token travels by env
+# (readable only by the owner and root, via /proc/<pid>/environ) into a
+# child that writes it to the config file and nowhere else.
 # Args: user name backend token_json
 storage_write_remote() {
 	local user="$1"
@@ -60,18 +65,30 @@ storage_write_remote() {
 	local token_json="$4"
 
 	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
-		printf 'DRY-RUN: rclone config create %s %s (as %s)\n' \
+		printf 'DRY-RUN: write rclone remote %s (%s) to %s rclone.conf\n' \
 			"$name" "$backend" "$user"
 		return 0
 	fi
-	# runuser keeps the config under the member's own HOME with
-	# their ownership; token passed via env, not argv.
-	# shellcheck disable=SC2016  # expansion belongs to the child shell
+	# shellcheck disable=SC2016  # $1/$2/env expand in the child shell
 	RCLONE_TOKEN_JSON="$token_json" runuser -u "$user" -- bash -c '
-		rclone config create "$1" "$2" \
-			token "$RCLONE_TOKEN_JSON" \
-			config_refresh_token false > /dev/null
-	' storage-add "$name" "$backend"
+		set -u
+		umask 077
+		name="$1"; backend="$2"
+		conf="$HOME/.config/rclone/rclone.conf"
+		mkdir -p "$(dirname "$conf")" || exit 1
+		if [[ -f $conf ]] && grep -qxF "[$name]" "$conf"; then
+			printf "remote %s already exists; remove it first\n" \
+				"$name" >&2
+			exit 3
+		fi
+		{
+			printf "[%s]\n" "$name"
+			printf "type = %s\n" "$backend"
+			printf "token = %s\n" "$RCLONE_TOKEN_JSON"
+			printf "config_refresh_token = false\n"
+		} >> "$conf"
+		chmod 600 "$conf"
+	' rclone-add "$name" "$backend"
 }
 
 # systemd user unit for the mount. Bounded VFS cache keeps disk use
@@ -231,11 +248,16 @@ main() {
 	local user='' name='' provider='' token_file='' cache_max='10G'
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
-			--user)       user="$2"; shift 2 ;;
-			--name)       name="$2"; shift 2 ;;
-			--provider)   provider="$2"; shift 2 ;;
-			--token-file) token_file="$2"; shift 2 ;;
-			--cache-max)  cache_max="$2"; shift 2 ;;
+			--user)       require_value "$@" || return 1
+			              user="$2"; shift 2 ;;
+			--name)       require_value "$@" || return 1
+			              name="$2"; shift 2 ;;
+			--provider)   require_value "$@" || return 1
+			              provider="$2"; shift 2 ;;
+			--token-file) require_value "$@" || return 1
+			              token_file="$2"; shift 2 ;;
+			--cache-max)  require_value "$@" || return 1
+			              cache_max="$2"; shift 2 ;;
 			--dry-run)    appliance_dry_run=1; shift ;;
 			-h|--help)    usage; return 0 ;;
 			*)

@@ -24,6 +24,38 @@ teardown() {
 }
 
 # =============================================================================
+# require_value (the missing-flag-value guard)
+# =============================================================================
+
+@test "require_value: passes when a value follows the flag" {
+	run require_value --hostname cws.example.com
+	[[ $status -eq 0 ]]
+}
+
+@test "require_value: fails when the flag is the last token" {
+	run require_value --hostname
+	[[ $status -ne 0 ]]
+	[[ $output == *'--hostname requires a value'* ]]
+}
+
+@test "require_value: a value-less flag does not hang the parser" {
+	# Regression: `foo=$2; shift 2` no-ops on the last token and spins
+	# the while loop forever; the guard must abort instead.
+	run timeout 5 bash -c '
+		source "'"$SCRIPT_DIR"'/../lib/common.sh"
+		set -- --hostname
+		while [[ $# -gt 0 ]]; do
+			case "$1" in
+				--hostname) require_value "$@" || exit 1
+				            h="$2"; shift 2 ;;
+				*) shift ;;
+			esac
+		done
+	'
+	[[ $status -eq 1 ]]   # clean abort, NOT 124 (timeout) or 0
+}
+
+# =============================================================================
 # run_cmd
 # =============================================================================
 

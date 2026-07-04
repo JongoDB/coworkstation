@@ -3,10 +3,10 @@
 # Claude appliance member management — Phase 2 (multi-user)
 #
 # Usage:
-#   sudo appliance/member.sh add NAME [--quota-mem 6G] [--quota-cpu 200%]
-#                                     [--dry-run]
-#   sudo appliance/member.sh remove NAME [--keep-home] [--dry-run]
-#   appliance/member.sh list
+#   sudo ./member.sh add NAME [--quota-mem 6G] [--quota-cpu 200%]
+#                             [--dry-run]
+#   sudo ./member.sh remove NAME [--keep-home] [--yes] [--dry-run]
+#   ./member.sh list
 #
 # Each member gets: a Unix account, a systemd user-slice quota, a
 # kasmVNC session on their own display/port, a cloudflared ingress
@@ -199,8 +199,22 @@ cmd_add() {
 		log_info "account '$name' already exists; adopting it"
 	fi
 
+	# Members share 127.0.0.1; isolation between them leans on file
+	# modes, so keep each home private (the distro default can be 0755).
+	if [[ ${appliance_dry_run:-0} -ne 1 ]]; then
+		local mhome
+		mhome=$(user_home "$name") && chmod 700 "$mhome" 2> /dev/null
+	fi
+
 	install_slice_quota "$name" "$mem" "$cpu" || return 1
+	# Mirror profile_kasmvnc_apply exactly: the cert and control user are
+	# mandatory. Without them write_service's `enable --now` starts a
+	# vncserver that either exits 1 (no cert) or loops forever on the
+	# interactive control-user prompt (no ~/.kasmpasswd) — a member whose
+	# session never binds a listener.
+	profile_kasmvnc_setup_cert "$name" || return 1
 	profile_kasmvnc_write_config "$name" "$port" || return 1
+	profile_kasmvnc_setup_auth "$name" || return 1
 	profile_kasmvnc_write_service "$name" "$display" || return 1
 	member_autostart "$name" || return 1
 
@@ -233,8 +247,14 @@ cmd_add() {
 
 	log_info "member '$name' added (display :$display, port $port)"
 	if [[ -n $member_host ]]; then
-		log_info "  hostname: $member_host — add a Cloudflare Access"
-		log_info "  policy for it before first use"
+		if [[ $(tunnel_conf_get mode 2> /dev/null) == 'api' ]]; then
+			log_info "  hostname: $member_host (Access app provisioned)"
+		else
+			log_warn "$member_host is served by the tunnel with NO" \
+				"Cloudflare Access policy yet — it is PUBLIC until you" \
+				"create one. Add an Access application for it before" \
+				"the member signs in."
+		fi
 	fi
 	log_info "  first login: they sign into Claude and the keyring"
 }
@@ -242,12 +262,33 @@ cmd_add() {
 cmd_remove() {
 	local name="$1"
 	local keep_home="$2"
+	local assume_yes="${3:-0}"
 	local registry row
 	registry=$(registry_file)
 
 	if ! row=$(registry_get "$name" "$registry"); then
 		log_err "member '$name' is not in the registry"
 		return 1
+	fi
+
+	# userdel -r wipes the member's home (Claude config, keyring, cache).
+	# Confirm interactively unless --keep-home, --yes, or --dry-run.
+	if [[ $keep_home -ne 1 && $assume_yes -ne 1 \
+		&& ${appliance_dry_run:-0} -ne 1 ]]; then
+		if [[ -t 0 ]]; then
+			local reply
+			printf "Delete member '%s' AND their home directory? [y/N] " \
+				"$name" >&2
+			read -r reply
+			if [[ $reply != [yY] && $reply != [yY][eE][sS] ]]; then
+				log_info 'aborted'
+				return 1
+			fi
+		else
+			log_err "refusing to delete '$name' home" \
+				'non-interactively; pass --yes or --keep-home'
+			return 1
+		fi
 	fi
 
 	run_cmd loginctl terminate-user "$name"
@@ -322,7 +363,7 @@ main() {
 	appliance_dry_run=0
 	appliance_force=0
 
-	local name='' mem='6G' cpu='200%' keep_home=0
+	local name='' mem='6G' cpu='200%' keep_home=0 assume_yes=0
 	if [[ $cmd == 'add' || $cmd == 'remove' ]]; then
 		name="${1:-}"
 		if [[ -z $name || $name == --* ]]; then
@@ -338,9 +379,12 @@ main() {
 
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
-			--quota-mem) mem="$2"; shift 2 ;;
-			--quota-cpu) cpu="$2"; shift 2 ;;
+			--quota-mem) require_value "$@" || return 1
+			             mem="$2"; shift 2 ;;
+			--quota-cpu) require_value "$@" || return 1
+			             cpu="$2"; shift 2 ;;
 			--keep-home) keep_home=1; shift ;;
+			--yes)       assume_yes=1; shift ;;
 			--dry-run)   appliance_dry_run=1; shift ;;
 			-h|--help)   usage; return 0 ;;
 			*)
@@ -357,7 +401,7 @@ main() {
 			;;
 		remove)
 			require_root || return 1
-			cmd_remove "$name" "$keep_home"
+			cmd_remove "$name" "$keep_home" "$assume_yes"
 			;;
 		list)
 			cmd_list

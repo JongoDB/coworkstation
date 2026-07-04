@@ -172,6 +172,10 @@ _stub_account_world() {
 	run cmd_add alice 6G 200%
 	[[ $status -eq 0 ]]
 	[[ $output == *'DRY-RUN: useradd -m -s /bin/bash alice'* ]]
+	# The cert + control user are mandatory: without them a member's
+	# kasmVNC session never binds (regression guard for the DOA member).
+	[[ $output == *'kasmvnc self-signed cert for alice'* ]]
+	[[ $output == *'kasmvnc control user for alice'* ]]
 	[[ $output == *'alice.claude.example.com'* ]]
 	[[ $output == *'http://127.0.0.1:8444'* ]]
 	[[ $output == *'DRY-RUN: append alice'* ]]

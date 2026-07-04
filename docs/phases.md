@@ -11,35 +11,32 @@ Executable specifications for the six implementation phases of the [Cowork appli
 ## Repository layout (all phases)
 
 ```
-appliance/
-├── setup.sh                 # Phase 1 — provisioning orchestrator
-├── member.sh                # Phase 2 — member lifecycle
-├── gen-sshconfigs.sh        # Phase 4 — managed-settings generator
-├── lib/
-│   ├── common.sh            # logging, os/pkg detection, run/dry-run gate
-│   ├── engine.sh            # engine selection rules (official vs repo build)
-│   ├── doctor.sh            # appliance-doctor check functions
-│   └── profiles/
-│       ├── kasmvnc.sh       # default session layer
-│       ├── xrdp.sh          # protocol-native alternative
-│       └── overlay.sh       # tailscale break-glass profile
-├── testbench/
-│   ├── setup.sh             # Phase 3 — test bench provisioning
-│   ├── desktop-control-mcp.js  # Tier-2 MCP server (nested display control)
-│   └── vm-bench-mcp.js      # Tier-3 MCP server (QEMU targets)
-└── images/
-    ├── cloud-init.yaml      # Phase 5 — VPS/mini-PC bootstrap
-    └── README.md            # pi-gen recipe notes
+install.sh                   # network installer (curl | sudo bash)
+setup.sh                     # Phase 1 — provisioning orchestrator
+member.sh                    # Phase 2 — member lifecycle
+storage.sh                   # Phase 2.5 — remote-backed storage
+gen-sshconfigs.sh            # Phase 4 — managed-settings generator
+lib/
+├── common.sh                # logging, os/pkg detection, run/dry-run gate
+├── engine.sh                # engine selection rules (official vs repo build)
+├── doctor.sh                # doctor check functions
+├── tunnel-api.sh            # Phase 1.5 — zero-touch Cloudflare provisioning
+└── profiles/
+    ├── kasmvnc.sh           # default session layer
+    ├── xrdp.sh              # protocol-native alternative
+    └── overlay.sh           # tailscale break-glass profile
+testbench/
+├── setup.sh                 # Phase 3 — test bench provisioning
+├── desktop-control-mcp.js   # Tier-2 MCP server (nested display control)
+└── vm-bench-mcp.js          # Tier-3 MCP server (QEMU targets)
+images/
+├── cloud-init.yaml          # Phase 5 — VPS/mini-PC bootstrap
+└── README.md                # pi-gen recipe notes
 
-tests/
-├── appliance-common.bats
-├── appliance-engine.bats
-├── appliance-doctor.bats
-├── appliance-member.bats
-├── appliance-sshconfigs.bats
-└── appliance-mcp.bats       # protocol tests for both MCP servers
+tests/                       # common, engine, doctor, member, storage,
+                             # sshconfigs, tunnel-api, mcp (*.bats)
 
-.github/workflows/appliance-tests.yml
+.github/workflows/tests.yml
 ```
 
 ## Cross-phase conventions
@@ -96,8 +93,8 @@ nested-virt quirks make results unrepresentative — the hourly VPS is
 the cheaper, truer lab) and Fedora/other distros until the
 Debian-family path is solid.
 
-Per-tier recipe: provision bare OS → run `appliance/setup.sh` (or
-feed `appliance/images/cloud-init.yaml`) → `appliance/setup.sh
+Per-tier recipe: provision bare OS → run `./setup.sh` (or
+feed `images/cloud-init.yaml`) → `./setup.sh
 doctor` to zero FAILs → work the phase's hardware-verify checklist →
 destroy and re-provision to prove repeatability.
 
@@ -112,14 +109,14 @@ session serving over kasmVNC, cloudflared tunnel configured, doctor green.
 ### Interface
 
 ```bash
-sudo appliance/setup.sh \
+sudo ./setup.sh \
 	[--engine auto|official|repo]   # default auto
 	[--profile kasmvnc|xrdp|overlay] # default kasmvnc
 	[--user NAME]                    # default: invoking sudo user
 	[--hostname claude.example.com]  # tunnel public hostname (kasmvnc profile)
 	[--dry-run] [--force]
 
-appliance/setup.sh doctor        # alias for the doctor entry point
+./setup.sh doctor        # alias for the doctor entry point
 ```
 
 ### Behavior
@@ -176,7 +173,7 @@ no interactive `cloudflared tunnel login`.
 ### Interface
 
 ```bash
-sudo appliance/setup.sh --hostname claude.example.com \
+sudo ./setup.sh --hostname claude.example.com \
 	--cf-api-token-file /root/cf-token \
 	--access-allow 'alice@example.com,example.com'
 ```
@@ -234,10 +231,10 @@ checks the recorded tunnel id instead of the local YAML.
 ### Interface
 
 ```bash
-sudo appliance/member.sh add NAME [--quota-mem 6G] [--quota-cpu 200%] \
+sudo ./member.sh add NAME [--quota-mem 6G] [--quota-cpu 200%] \
 	[--port auto] [--dry-run]
-sudo appliance/member.sh remove NAME [--keep-home] [--dry-run]
-appliance/member.sh list
+sudo ./member.sh remove NAME [--keep-home] [--dry-run]
+./member.sh list
 ```
 
 ### Behavior
@@ -283,10 +280,10 @@ sync, so a small VPS disk serves large accounts.
 ### Interface
 
 ```bash
-sudo appliance/storage.sh add --user alice --provider gdrive \
+sudo ./storage.sh add --user alice --provider gdrive \
 	--name drive [--token-file FILE] [--cache-max 10G]
-sudo appliance/storage.sh remove --user alice --name drive
-appliance/storage.sh list --user alice
+sudo ./storage.sh remove --user alice --name drive
+./storage.sh list --user alice
 ```
 
 Providers: `gdrive`, `onedrive`, `dropbox` (anything else via raw
@@ -410,10 +407,10 @@ installable per member, usable from Cowork/Code sessions.
   (tunnel login, sign-in).
 - **`images/README.md`**: pi-gen stage recipe for a Pi 5 image (arm64
   deb engine, notes on 16 GB RAM guidance and no-HW-encoder caveat).
-- **`.github/workflows/appliance-tests.yml`**: on PR/push touching
-  `appliance/**` or `tests/appliance-*`: shellcheck on `appliance/**/
-  *.sh`, `node --check` on the MCP servers, full appliance BATS suite,
-  plus the Xvfb end-to-end MCP test (ubuntu-latest has xvfb).
+- **`.github/workflows/tests.yml`**: on PR/push to `main`: shellcheck on
+  the entry points and `lib/**/*.sh`, `node --check` on the MCP servers,
+  the full BATS suite, plus the Xvfb end-to-end MCP test (ubuntu-latest
+  has xvfb).
 - CHANGELOG `[Unreleased]` entries per Keep a Changelog.
 
 ### Acceptance criteria

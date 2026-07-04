@@ -70,10 +70,13 @@ profile_kasmvnc_setup_cert() {
 		return 0
 	fi
 	run_as_user "$user" mkdir -p "$home/.vnc" || return 1
-	if ! runuser -u "$user" -- openssl req -x509 -nodes \
-		-newkey rsa:2048 -days 3650 \
-		-keyout "$key" -out "$pem" -subj '/CN=localhost' \
-		> /dev/null 2>&1; then
+	# umask 077 in the child so the private key is never briefly readable
+	# between creation and the explicit chmod.
+	# shellcheck disable=SC2016  # $1/$2 must expand in the child sh, not here
+	if ! runuser -u "$user" -- sh -c \
+		'umask 077; openssl req -x509 -nodes -newkey rsa:2048 \
+		-days 3650 -keyout "$1" -out "$2" -subj "/CN=localhost" \
+		> /dev/null 2>&1' openssl-cert "$key" "$pem"; then
 		log_err "failed to generate kasmVNC cert for $user"
 		return 1
 	fi

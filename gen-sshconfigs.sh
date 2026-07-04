@@ -9,7 +9,7 @@
 # file without disturbing unrelated keys.
 #
 # Usage:
-#   appliance/gen-sshconfigs.sh --host claude.example.com
+#   ./gen-sshconfigs.sh --host claude.example.com
 #       [--ssh-user NAME]      # one entry for a single shared account
 #       [--per-member]         # one entry per members.tsv row instead
 #       [--start-dir ~/work]
@@ -82,12 +82,16 @@ main() {
 
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
-			--host)       host="$2"; shift 2 ;;
-			--ssh-user)   ssh_user="$2"; shift 2 ;;
+			--host)       require_value "$@" || return 1
+			              host="$2"; shift 2 ;;
+			--ssh-user)   require_value "$@" || return 1
+			              ssh_user="$2"; shift 2 ;;
 			--per-member) per_member=1; shift ;;
-			--start-dir)  start_dir="$2"; shift 2 ;;
+			--start-dir)  require_value "$@" || return 1
+			              start_dir="$2"; shift 2 ;;
 			--allowlist)  allowlist=1; shift ;;
-			--merge)      merge_file="$2"; shift 2 ;;
+			--merge)      require_value "$@" || return 1
+			              merge_file="$2"; shift 2 ;;
 			-h|--help)
 				sed -n '2,19p' "${BASH_SOURCE[0]}" \
 					| sed 's/^# \{0,1\}//'

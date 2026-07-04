@@ -8,7 +8,7 @@
 # engine; it is not itself a binary app).
 #
 # Usage (defaults to the latest release, falls back to main):
-#   curl -fsSL https://raw.githubusercontent.com/JongoDB/coworkstation/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/jongodb/coworkstation/main/install.sh | sudo bash
 #
 # Pass setup.sh flags through after `-s --`:
 #   curl -fsSL .../install.sh | sudo bash -s -- \
@@ -21,7 +21,7 @@
 
 set -u
 
-repo='JongoDB/coworkstation'
+repo='jongodb/coworkstation'
 ref="${COWORKSTATION_REF:-main}"
 dir="${COWORKSTATION_DIR:-/opt/coworkstation}"
 
@@ -46,11 +46,13 @@ if command -v git > /dev/null 2>&1; then
 	else
 		log "cloning $repo@$ref into $dir"
 		rm -rf "$dir"
+		# Clone the requested ref explicitly. Do NOT fall back to the
+		# default branch on failure: a moved/deleted tag or a transient
+		# error must surface, not silently downgrade a pin to whatever
+		# `main` currently is (that would be an unattended code swap).
 		git clone --depth 1 --branch "$ref" \
-			"https://github.com/$repo" "$dir" 2> /dev/null \
-			|| git clone --depth 1 \
-				"https://github.com/$repo" "$dir" \
-			|| die 'git clone failed'
+			"https://github.com/$repo" "$dir" \
+			|| die "git clone of ref '$ref' failed"
 	fi
 else
 	log "downloading $repo@$ref tarball into $dir (git not found)"

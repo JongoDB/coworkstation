@@ -42,6 +42,9 @@ setup() {
 			'GET /zones?name=example.com')
 				printf '{"success":true,"result":[{"id":"zone-1","name":"example.com"}]}'
 				;;
+			'GET /zones/zone-1')
+				printf '{"success":true,"result":{"id":"zone-1","name":"example.com","account":{"id":"acct-1"}}}'
+				;;
 			'GET /accounts/acct-1/cfd_tunnel?name=claude-appliance&is_deleted=false')
 				printf '{"success":true,"result":[]}'
 				;;

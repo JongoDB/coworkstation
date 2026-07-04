@@ -49,7 +49,7 @@ write_files:
 
 runcmd:
   - git clone --depth 1
-    https://github.com/JongoDB/coworkstation
+    https://github.com/jongodb/coworkstation
     /opt/coworkstation
   - /opt/coworkstation/setup.sh
     --user cowork --hostname __HOSTNAME__

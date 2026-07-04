@@ -7,13 +7,13 @@ Operational procedures for a running appliance: provision, members, edge, distri
 ```bash
 # Dev bootstrap — clone and run; the wizard prompts for anything
 # missing (hostname, API token file, Access allow list):
-git clone https://github.com/JongoDB/coworkstation
-sudo claude-desktop-debian/appliance/setup.sh
+git clone https://github.com/jongodb/coworkstation
+sudo ./setup.sh
 
 # The three commands you will use after that:
-sudo appliance/member.sh add alice                      # add a member
-appliance/setup.sh doctor                               # health check
-appliance/gen-sshconfigs.sh --host claude.example.com --per-member
+sudo ./member.sh add alice                      # add a member
+./setup.sh doctor                               # health check
+./gen-sshconfigs.sh --host claude.example.com --per-member
 ```
 
 ## Initial provision
@@ -27,7 +27,7 @@ My Profile > API Tokens):
 
 ```bash
 printf '%s' 'YOUR-API-TOKEN' > /root/cf-token && chmod 600 /root/cf-token
-sudo appliance/setup.sh --hostname claude.example.com \
+sudo ./setup.sh --hostname claude.example.com \
 	--cf-api-token-file /root/cf-token \
 	--access-allow 'you@example.com'
 ```
@@ -37,13 +37,13 @@ remotely-managed tunnel, the proxied DNS record, **and the Access
 application with an allow policy** for the emails/domains in
 `--access-allow` (required — a tunneled hostname without an Access
 app is public). Then: open `https://claude.example.com`, pass the
-Access login, sign into Claude, run `appliance/setup.sh doctor`.
+Access login, sign into Claude, run `./setup.sh doctor`.
 
 ### Manual tunnel (no API token)
 
 1. Fresh Debian 12+/Ubuntu 24.04+ box (x86_64 or arm64), DNS name
    picked (e.g. `claude.example.com`), Cloudflare zone for it.
-2. `sudo appliance/setup.sh --hostname claude.example.com`
+2. `sudo ./setup.sh --hostname claude.example.com`
    - engine auto-selection: official apt build where `/dev/kvm`
      exists; this repo's build with the bwrap Cowork backend where it
      doesn't. Force with `--engine`. The decision is recorded in
@@ -62,7 +62,7 @@ Access login, sign into Claude, run `appliance/setup.sh doctor`.
    public binds — the doctor fails loudly if it ever finds one.
 5. Log into the session once (browser → the hostname), sign into
    Claude, let the keyring initialize. Run
-   `appliance/setup.sh doctor` and get to zero FAILs.
+   `./setup.sh doctor` and get to zero FAILs.
 
 Test environments for validating all of this (VPS → mini PC → Pi 5)
 are specified in
@@ -71,9 +71,9 @@ are specified in
 ## Member lifecycle
 
 ```bash
-sudo appliance/member.sh add alice --quota-mem 6G --quota-cpu 200%
-sudo appliance/member.sh remove bob --keep-home
-appliance/member.sh list
+sudo ./member.sh add alice --quota-mem 6G --quota-cpu 200%
+sudo ./member.sh remove bob --keep-home
+./member.sh list
 ```
 
 `add` creates the account, systemd slice quota, kasmVNC session on
@@ -93,7 +93,7 @@ slices, so a noisy member throttles before starving the box.
 ## Cloud storage (keep project data off the appliance disk)
 
 ```bash
-sudo appliance/storage.sh add --user alice --provider gdrive --name drive
+sudo ./storage.sh add --user alice --provider gdrive --name drive
 ```
 
 The wizard tells the member to run `rclone authorize "drive"` on
@@ -107,7 +107,7 @@ health; `remove` detaches without touching provider data.
 ## Test bench
 
 ```bash
-sudo appliance/testbench/setup.sh --user alice
+sudo ./testbench/setup.sh --user alice
 ```
 
 Registers the `desktop-control` (nested-display GUI control) and
@@ -127,10 +127,10 @@ Generate the managed-settings block and distribute it via your
 device-management channel:
 
 ```bash
-appliance/gen-sshconfigs.sh --host claude.example.com --per-member \
+./gen-sshconfigs.sh --host claude.example.com --per-member \
 	--start-dir '~/projects' --allowlist
 # or merge into an existing managed settings file:
-appliance/gen-sshconfigs.sh --host claude.example.com --per-member \
+./gen-sshconfigs.sh --host claude.example.com --per-member \
 	--merge /path/to/managed-settings.json
 ```
 
@@ -187,7 +187,7 @@ the app's own stack; the two are complementary.
 
 ### Sign-in doesn't persist across restarts
 
-Keyring problem. Check `appliance/setup.sh doctor` (non-empty
+Keyring problem. Check `./setup.sh doctor` (non-empty
 keyring check) and that `libpam-gnome-keyring` lines survived any
 PAM changes. First-login-creates-keyring is normal (WARN, not FAIL).
 

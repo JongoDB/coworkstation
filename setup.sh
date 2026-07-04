@@ -7,13 +7,13 @@
 # selected profile, cloudflared skeleton, XDG autostart, doctor.
 #
 # Usage:
-#   sudo appliance/setup.sh [--engine auto|official|repo]
-#                           [--profile kasmvnc|xrdp|overlay]
-#                           [--user NAME] [--hostname FQDN]
-#                           [--cf-api-token-file FILE]
-#                           [--access-allow EMAIL_OR_DOMAIN[,...]]
-#                           [--dry-run] [--force]
-#   appliance/setup.sh doctor [--user NAME]
+#   sudo ./setup.sh [--engine auto|official|repo]
+#                   [--profile kasmvnc|xrdp|overlay]
+#                   [--user NAME] [--hostname FQDN]
+#                   [--cf-api-token-file FILE]
+#                   [--access-allow EMAIL_OR_DOMAIN[,...]]
+#                   [--dry-run] [--force]
+#   sudo ./setup.sh doctor [--user NAME]
 #
 # Zero-touch mode: with --cf-api-token-file (scoped Cloudflare token:
 # Tunnel:Edit, Access Apps:Edit, DNS:Edit) the tunnel, DNS record, and
@@ -72,9 +72,41 @@ prompt_missing_flags() {
 	fi
 }
 
+# Tools the provisioning path itself needs but a minimal cloud image
+# does not ship: jq (every Cloudflare API call parses with it), openssl
+# (per-user kasmVNC cert), gnupg (apt key dearmor for the repo engine),
+# curl/ca-certificates (downloads). Installed before any of them run so
+# the zero-touch flow doesn't die on a missing tool with a misleading
+# error.
+install_base_deps() {
+	pkg_install jq openssl gnupg curl ca-certificates
+}
+
 install_session_stack() {
 	pkg_install xfce4 xfce4-terminal dbus-x11 \
 		gnome-keyring libsecret-1-0 libpam-gnome-keyring
+}
+
+# Resolve the session user, minting a default unprivileged account when
+# running as root with nothing to fall back on — the fresh-VPS case
+# where `curl | sudo bash` has no $SUDO_USER and no non-root account
+# exists yet. An explicit --user or a real $SUDO_USER is used as-is; an
+# explicit name that does not exist is still an error (handled before
+# the root gate). Must run after require_root.
+ensure_target_user() {
+	local explicit="$1"
+	local candidate="${explicit:-${SUDO_USER:-}}"
+	if [[ -n $candidate && $candidate != 'root' ]]; then
+		printf '%s' "$candidate"
+		return 0
+	fi
+	local default_user="${APPLIANCE_DEFAULT_USER:-cowork}"
+	if ! id "$default_user" > /dev/null 2>&1; then
+		log_info "no --user given; creating default account" \
+			"'$default_user'"
+		run_cmd useradd -m -s /bin/bash "$default_user" || return 1
+	fi
+	printf '%s' "$default_user"
 }
 
 # XDG autostart so Claude Desktop launches with the session; upstream
@@ -116,15 +148,23 @@ main() {
 
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
-			--engine)            engine="$2"; shift 2 ;;
-			--profile)           profile="$2"; shift 2 ;;
-			--user)              user="$2"; shift 2 ;;
-			--hostname)          hostname="$2"; shift 2 ;;
-			--cf-api-token-file) token_file="$2"; shift 2 ;;
-			--access-allow)      access_allow="$2"; shift 2 ;;
-			--dry-run)           appliance_dry_run=1; shift ;;
-			--force)             appliance_force=1; shift ;;
-			-h|--help)           usage; return 0 ;;
+			--engine)     require_value "$@" || return 1
+			              engine="$2"; shift 2 ;;
+			--profile)    require_value "$@" || return 1
+			              profile="$2"; shift 2 ;;
+			--user)       require_value "$@" || return 1
+			              user="$2"; shift 2 ;;
+			--hostname)   require_value "$@" || return 1
+			              hostname="$2"; shift 2 ;;
+			--cf-api-token-file)
+			              require_value "$@" || return 1
+			              token_file="$2"; shift 2 ;;
+			--access-allow)
+			              require_value "$@" || return 1
+			              access_allow="$2"; shift 2 ;;
+			--dry-run)    appliance_dry_run=1; shift ;;
+			--force)      appliance_force=1; shift ;;
+			-h|--help)    usage; return 0 ;;
 			*)
 				log_err "unknown argument '$1'"
 				usage
@@ -145,6 +185,13 @@ main() {
 		prompt_missing_flags
 	fi
 
+	if [[ -n $hostname && ! $hostname =~ \
+		^[a-z0-9]([a-z0-9-]{0,62})(\.[a-z0-9]([a-z0-9-]{0,62}))+$ ]]; then
+		log_err "invalid hostname '$hostname' (expected an FQDN like" \
+			'cws.example.com)'
+		return 1
+	fi
+
 	local tunnel_mode='manual'
 	if [[ -n $token_file ]]; then
 		tunnel_mode='api'
@@ -160,14 +207,24 @@ main() {
 		fi
 	fi
 
-	user=$(resolve_target_user "$user") || return 1
-
 	if [[ $mode == 'doctor' ]]; then
+		user=$(resolve_target_user "$user") || return 1
 		run_appliance_doctor "$user"
 		return
 	fi
 
+	# Validate an explicit/sudo candidate before the root gate, so bad
+	# input is reported to non-root callers (and CI) as before. With no
+	# usable candidate we defer to ensure_target_user, which mints the
+	# default account once we are confirmed root.
+	local user_candidate="${user:-${SUDO_USER:-}}"
+	if [[ -n $user_candidate && $user_candidate != 'root' ]]; then
+		user=$(resolve_target_user "$user") || return 1
+	fi
+
 	require_root || return 1
+
+	user=$(ensure_target_user "$user") || return 1
 
 	local distro
 	distro=$(appliance_distro_id)
@@ -187,6 +244,7 @@ main() {
 	log_info "engine: $engine_choice — $engine_reason"
 
 	run_cmd apt-get update || return 1
+	install_base_deps || return 1
 	install_session_stack || return 1
 	install_engine "$user" || return 1
 
@@ -215,9 +273,17 @@ main() {
 	install_autostart "$user" || return 1
 
 	log_info 'provisioning complete. Next steps:'
-	log_info "  - log into the session once as '$user' to create the"
-	log_info '    keyring and sign into Claude'
-	log_info '  - run: ./setup.sh doctor'
+	if [[ $profile == 'kasmvnc' ]]; then
+		local home
+		home=$(user_home "$user" 2> /dev/null)
+		log_info "  - kasmVNC password for '$user': sudo cat" \
+			"${home:-/home/$user}/.vnc/kasm-credentials"
+	fi
+	log_info "  - open https://${hostname:-<hostname>} , pass Cloudflare"
+	log_info "    Access, then log in with the kasmVNC credentials above"
+	log_info "  - inside the session, sign into Claude (this populates"
+	log_info "    the keyring on first use)"
+	log_info "  - run: sudo ./setup.sh doctor --user $user"
 	if [[ $profile == 'kasmvnc' && -n $hostname \
 		&& $tunnel_mode == 'manual' ]]; then
 		log_info '  - finish the cloudflared tunnel steps printed above'

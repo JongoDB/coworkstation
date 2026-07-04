@@ -22,17 +22,23 @@ cf_api_base='https://api.cloudflare.com/client/v4'
 
 # Transport. $1=method $2=path (starts with /) $3=optional JSON body.
 # Emits the raw response JSON on stdout.
+#
+# The Authorization header is fed through `curl --config -` (stdin), NOT
+# argv: this box is multi-user and /proc/<pid>/cmdline is world-readable,
+# so a token on curl's argv would be scrapeable by any member. The token
+# is edge-wide (Tunnel/DNS/Access edit), so this matters.
 cf_api() {
 	local method="$1"
 	local path="$2"
 	local body="${3:-}"
 	local args=(-sS -X "$method" "$cf_api_base$path"
-		-H "Authorization: Bearer $cf_api_token"
-		-H 'Content-Type: application/json')
+		-H 'Content-Type: application/json'
+		--config -)
 	if [[ -n $body ]]; then
 		args+=(--data "$body")
 	fi
-	curl "${args[@]}"
+	printf 'header = "Authorization: Bearer %s"\n' "$cf_api_token" \
+		| curl "${args[@]}"
 }
 
 # Wrapper that fails loudly when .success != true.
@@ -68,9 +74,22 @@ tunnel_api_load_token() {
 	}
 }
 
-# First (usually only) account the token can see.
+# First (usually only) account the token can see. Note: a token scoped
+# only to specific resources (DNS/Tunnel/Access edit) CANNOT list
+# /accounts — Cloudflare returns an empty array (success:true, result:[]),
+# not an error — so this yields empty for exactly the tokens the README
+# tells users to create. cf_account_for_zone is the robust primary.
 cf_account_id() {
 	cf_call GET /accounts | jq -r '.[0].id // empty'
+}
+
+# Account that owns a zone. cf_call has already unwrapped .result, so the
+# account object is at .account. This works with a resource-scoped token
+# (the one setup.sh asks for) because it only needs to read the zone the
+# hostname lives in — no account-list permission required.
+cf_account_for_zone() {
+	local zone_id="$1"
+	cf_call GET "/zones/$zone_id" | jq -r '.account.id // empty'
 }
 
 # Walk the hostname right-to-left until a zone matches.
@@ -96,10 +115,15 @@ cf_zone_for_hostname() {
 cf_tunnel_ensure() {
 	local account="$1"
 	local name="$2"
-	local id
-	id=$(cf_call GET \
-		"/accounts/$account/cfd_tunnel?name=$name&is_deleted=false" \
-		| jq -r '.[0].id // empty') || return 1
+	local id resp
+	# Capture cf_call separately: piping straight into jq would mask a
+	# transient GET failure (jq exits 0 on empty input), and an empty id
+	# then falls through to POST — creating a SECOND tunnel of the same
+	# name (Cloudflare allows duplicates) and breaking adopt-existing.
+	resp=$(cf_call GET \
+		"/accounts/$account/cfd_tunnel?name=$name&is_deleted=false") \
+		|| return 1
+	id=$(jq -r '.[0].id // empty' <<< "$resp")
 	if [[ -n $id ]]; then
 		# stdout is this function's return value; log to stderr.
 		log_info "adopting existing tunnel '$name' ($id)" >&2
@@ -303,17 +327,23 @@ tunnel_api_provision() {
 	fi
 
 	tunnel_api_load_token "$token_file" || return 1
-	local account
-	account=$(cf_account_id) || return 1
-	if [[ -z $account ]]; then
-		log_err 'token cannot list any Cloudflare account'
-		return 1
-	fi
 	local zone_pair zone_id zone_name
 	zone_pair=$(cf_zone_for_hostname "$hostname") || return 1
 	zone_id="${zone_pair%% *}"
 	zone_name="${zone_pair#* }"
 	if [[ -z $zone_id || -z $zone_name ]]; then
+		return 1
+	fi
+	# Derive the account from the zone (the scoped token can read it);
+	# fall back to /accounts only for broadly-scoped tokens.
+	local account
+	account=$(cf_account_for_zone "$zone_id")
+	if [[ -z $account ]]; then
+		account=$(cf_account_id)
+	fi
+	if [[ -z $account ]]; then
+		log_err "could not determine Cloudflare account for $hostname" \
+			'(token needs Zone:Read on its zone, or Account:Read)'
 		return 1
 	fi
 
@@ -359,6 +389,13 @@ tunnel_api_provision() {
 		log_info 'cloudflared service already active'
 	else
 		run_cmd cloudflared service install "$conn_token" || return 1
+		# cloudflared writes the connector token into the unit file it
+		# generates (default 0644). On a multi-user box that exposes the
+		# token to every member; lock it to root-only.
+		if [[ ${appliance_dry_run:-0} -ne 1 ]]; then
+			chmod 600 /etc/systemd/system/cloudflared.service \
+				2> /dev/null || true
+		fi
 	fi
 	log_info "zero-touch tunnel ready: https://$hostname"
 	log_info "  Access allow list: $allow_csv"

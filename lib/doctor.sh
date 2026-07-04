@@ -61,8 +61,10 @@ apl_check_public_binds() {
 		[[ -z $line ]] && continue
 		laddr=$(awk '{print $4}' <<< "$line")
 		port="${laddr##*:}"
+		# Session ports: RDP 3389, VNC 5900-5999, kasmVNC 8443 upward
+		# (member N binds 8443+N-1, so cover well past a single-glob /9).
 		case "$port" in
-			3389|590[0-9]|844[0-9]) ;;
+			3389|59[0-9][0-9]|84[4-9][0-9]|85[0-9][0-9]) ;;
 			*) continue ;;
 		esac
 		case "$laddr" in
@@ -141,12 +143,16 @@ apl_check_session_layer() {
 		port=$(grep -oE 'websocket_port:[[:space:]]*[0-9]+' \
 			"$home/.vnc/kasmvnc.yaml" | grep -oE '[0-9]+' | head -1)
 		port="${port:-8443}"
-		if grep -qE "127\.0\.0\.1:$port|\[::1\]:$port|\*:$port" \
+		# Require a LOOPBACK listener specifically: a wildcard bind
+		# (0.0.0.0:port) is a public exposure, not a healthy session, so
+		# it must not read as green here (apl_check_public_binds fails it).
+		if grep -qE "127\.0\.0\.1:$port|\[::1\]:$port" \
 			<<< "$ss_output"; then
 			_apl_pass "kasmVNC listening on $port"
 		else
 			_apl_fail "kasmVNC config present but nothing is" \
-				"listening on $port (service failed to start?)"
+				"listening on loopback:$port (service failed to start" \
+				'or bound publicly?)'
 		fi
 	elif [[ -f /etc/xrdp/xrdp.ini ]]; then
 		_apl_pass 'xrdp profile detected'

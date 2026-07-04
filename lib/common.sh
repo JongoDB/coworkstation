@@ -16,6 +16,17 @@ log_info() { printf '[appliance] %s\n' "$*"; }
 log_warn() { printf '[appliance] WARN: %s\n' "$*" >&2; }
 log_err()  { printf '[appliance] ERROR: %s\n' "$*" >&2; }
 
+# Guard a value-taking flag in an argument parser. Call as
+# `require_value "$@"` from inside the flag's case branch: it fails when
+# the flag is the LAST token (no value follows), which otherwise makes
+# `shift 2` a no-op and spins the `while [[ $# -gt 0 ]]` loop forever.
+require_value() {
+	if [[ $# -lt 2 ]]; then
+		log_err "$1 requires a value"
+		return 1
+	fi
+}
+
 # Run a mutating command, or print it under --dry-run.
 # Always call with an argv array — never a shell string.
 run_cmd() {

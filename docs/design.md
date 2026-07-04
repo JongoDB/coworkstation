@@ -218,7 +218,7 @@ Same conventions as the existing doctor: symptom-keyed output, distro-specific i
 
 ## Implementation phases
 
-1. **Single-user headless appliance** — `appliance/setup.sh` (bash-styleguide-conformant): engine selection + install, XFCE session, kasmVNC, `cloudflared` tunnel + Access application, XDG autostart, `appliance-doctor`. xrdp and the Tailscale overlay as alternative profiles. Target: Debian 12/Ubuntu 24.04, x86_64 + arm64.
+1. **Single-user headless appliance** — `./setup.sh` (bash-styleguide-conformant): engine selection + install, XFCE session, kasmVNC, `cloudflared` tunnel + Access application, XDG autostart, `appliance-doctor`. xrdp and the Tailscale overlay as alternative profiles. Target: Debian 12/Ubuntu 24.04, x86_64 + arm64.
 2. **Multi-user** — member add/remove flow (account, keyring PAM, systemd slice quotas, per-user kasmVNC instance, Access policy entry), sizing docs.
 3. **Test bench** — Tier 1/2 MCP tools (Playwright, `_electron`, AT-SPI + nested-display screenshot/input), then the `vm-bench` MCP server for Windows/Android targets; web console v0 (session links + doctor status).
 4. **Team distribution** — managed-settings `sshConfigs` generator for SSH-target mode; Guacamole gateway option; admin runbook.

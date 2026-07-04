@@ -131,7 +131,7 @@ teardown() {
 	appliance_dry_run=1
 	run cmd_add alice drive gdrive "$TEST_TMP/tok" 10G
 	[[ $status -eq 0 ]]
-	[[ $output == *'DRY-RUN: rclone config create drive drive'* ]]
+	[[ $output == *'DRY-RUN: write rclone remote drive (drive)'* ]]
 	[[ $output == *'rclone-drive.service'* ]]
 	[[ $output == *'cloud storage ready'* ]]
 	[[ ! -d $TEST_TMP/home/.config ]]

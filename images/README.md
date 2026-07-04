@@ -1,6 +1,6 @@
-# Appliance images
+# Coworkstation images
 
-Flash-and-go bootstrap paths for the Cowork appliance.
+Flash-and-go bootstrap paths for a Coworkstation box.
 
 ## cloud-init (VPS, mini-PC with Ubuntu autoinstall)
 
@@ -16,8 +16,13 @@ secrets in user-data.
 For a genuinely one-shot bring-up, SSH in once after boot and run
 the zero-touch flow instead (token file + `--access-allow`; see the
 [runbook](../../docs/runbook.md#zero-touch-recommended)).
-Putting the API token itself into user-data works too, but treat
-user-data as semi-sensitive at your provider before you do.
+
+**Do not put the API token in user-data.** Cloud user-data is served
+from the instance metadata endpoint (`169.254.169.254`), which **any
+local process — including every member's session — can read** for the
+life of the instance. The edge-wide Cloudflare token would be exposed
+to every user on the box. Fetch it after boot into a `0600` root file
+instead.
 
 Engine note: most VPSes have no nested virtualization, so engine
 auto-selection lands on this repo's build with the bwrap Cowork
@@ -30,7 +35,7 @@ Raspberry Pi OS (Bookworm, arm64):
 
 ```bash
 sudo apt install git && git clone \
-  https://github.com/JongoDB/coworkstation
+  https://github.com/jongodb/coworkstation
 sudo coworkstation/setup.sh \
   --user pi --hostname claude.example.com
 ```

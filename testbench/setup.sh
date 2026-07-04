@@ -85,7 +85,8 @@ main() {
 
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
-			--user)    user="$2"; shift 2 ;;
+			--user)    require_value "$@" || return 1
+			           user="$2"; shift 2 ;;
 			--dry-run) appliance_dry_run=1; shift ;;
 			-h|--help)
 				sed -n '2,13p' "${BASH_SOURCE[0]}" \
