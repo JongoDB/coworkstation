@@ -3,9 +3,17 @@
 # Engine selection and installation
 #
 # "Engine" = which Claude Desktop build the appliance runs:
-#   official — Anthropic's apt build (Debian-family, KVM-backed Cowork)
-#   repo     — this repository's build (bwrap Cowork backend; the
-#              portability path when KVM is unavailable)
+#   official — Anthropic's apt build. THE DEFAULT: it is Anthropic's own
+#              binary, unmodified, and the only engine whose use is
+#              squarely within the app's terms. Cowork's VM feature
+#              needs /dev/kvm; without it the rest of the app still
+#              works and setup says so plainly.
+#   repo     — the community claude-desktop-debian repackaging (bwrap
+#              Cowork backend for KVM-less hosts). EXPLICIT OPT-IN
+#              ONLY (--engine repo): it rewrites Anthropic's minified
+#              app, which is a different terms posture the operator
+#              must choose knowingly. auto never selects it on a
+#              Debian-family host.
 #
 # Sourced by appliance/setup.sh. Sets globals:
 #   engine_choice   official|repo
@@ -22,9 +30,18 @@ select_engine() {
 	local dev_kvm="${APPLIANCE_DEV_KVM:-/dev/kvm}"
 
 	case "$override" in
-		official|repo)
-			engine_choice="$override"
+		official)
+			engine_choice='official'
 			engine_reason='forced via --engine'
+			return 0
+			;;
+		repo)
+			engine_choice='repo'
+			engine_reason='forced via --engine (community build)'
+			log_warn 'engine repo is the community' \
+				'claude-desktop-debian repackaging, which patches' \
+				"Anthropic's app. You are opting into that terms" \
+				'posture explicitly.'
 			return 0
 			;;
 		auto) ;;
@@ -39,19 +56,30 @@ select_engine() {
 	case "$distro" in
 		debian|ubuntu) ;;
 		*)
+			# No official build outside the Debian family; the repo
+			# build is the only path and the operator should know
+			# what they are getting.
 			engine_choice='repo'
 			engine_reason="non-Debian distro '$distro':"
 			engine_reason+=' official build unavailable'
+			log_warn 'falling back to the community repackaging' \
+				"(no official build for '$distro')"
 			return 0
 			;;
 	esac
 
+	# Debian family: ALWAYS the official build. KVM only affects the
+	# Cowork VM feature, not the app — never silently swap in a patched
+	# binary to gain it.
+	engine_choice='official'
 	if [[ -e $dev_kvm ]]; then
-		engine_choice='official'
-		engine_reason='Debian-family with /dev/kvm present'
+		engine_reason='official build, /dev/kvm present (Cowork VM ok)'
 	else
-		engine_choice='repo'
-		engine_reason='no /dev/kvm: repo build with bwrap backend'
+		engine_reason='official build; no /dev/kvm so the Cowork VM'
+		engine_reason+=' feature is unavailable'
+		log_warn 'no /dev/kvm: Claude Desktop will run but Cowork'"'"'s' \
+			'VM feature will not. To trade the official binary for' \
+			'bwrap-backed Cowork, opt in explicitly with --engine repo.'
 	fi
 }
 
@@ -107,11 +135,19 @@ install_engine() {
 			;;
 	esac
 
-	local backend='kvm'
-	if [[ $engine_choice == 'repo' && ! -e ${APPLIANCE_DEV_KVM:-/dev/kvm} ]]
-	then
+	# Cowork backend actually available on this host:
+	#   kvm    — /dev/kvm present (either engine)
+	#   bwrap  — repo engine substituting bwrap for the missing KVM
+	#   none   — official engine without KVM: the app runs, the Cowork
+	#            VM feature does not (recorded so the doctor can say so)
+	local backend
+	if [[ -e ${APPLIANCE_DEV_KVM:-/dev/kvm} ]]; then
+		backend='kvm'
+	elif [[ $engine_choice == 'repo' ]]; then
 		backend='bwrap'
 		_engine_write_backend_env "$user" || return 1
+	else
+		backend='none'
 	fi
 
 	{

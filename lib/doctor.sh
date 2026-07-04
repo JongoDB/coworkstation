@@ -39,6 +39,10 @@ apl_check_engine_conf() {
 	if [[ $backend == 'kvm' && ! -e ${APPLIANCE_DEV_KVM:-/dev/kvm} ]]; then
 		_apl_fail 'engine.conf says kvm but /dev/kvm is absent'
 	fi
+	if [[ $backend == 'none' ]]; then
+		_apl_warn 'Cowork VM feature is unavailable (no /dev/kvm;' \
+			'official engine keeps the unmodified binary)'
+	fi
 }
 
 apl_check_engine_installed() {
@@ -108,6 +112,55 @@ apl_check_tunnel_config() {
 	else
 		_apl_fail 'cloudflared ingress is empty'
 	fi
+}
+
+# Every tunnel ingress hostname must be gated by a Cloudflare Access
+# application — a proxied hostname with no Access app is a PUBLIC
+# desktop, and it looks healthy in every other check. In api mode the
+# recorded token can verify coverage directly (uses tunnel-api.sh,
+# sourced by setup.sh); in manual mode there are no credentials to
+# query with, so say so instead of staying silent.
+apl_check_access_coverage() {
+	local tconf="$appliance_etc/tunnel.conf"
+	if [[ ! -f $tconf ]] || ! grep -qE '^mode=api$' "$tconf"; then
+		local cfconf="${APPLIANCE_CLOUDFLARED_CONF:-/etc/cloudflared/config.yml}"
+		if [[ -f $cfconf ]] && grep -qE '^\s+- hostname:' "$cfconf"; then
+			_apl_warn 'cannot verify Access coverage (manual tunnel' \
+				'mode) — confirm every ingress hostname has an' \
+				'Access policy in the Zero Trust dashboard'
+		fi
+		return
+	fi
+	local token_file account tunnel
+	token_file=$(tunnel_conf_get token_file) \
+		&& account=$(tunnel_conf_get account_id) \
+		&& tunnel=$(tunnel_conf_get tunnel_id)
+	if [[ -z ${token_file:-} || -z ${account:-} || -z ${tunnel:-} ]]; then
+		_apl_warn 'tunnel.conf incomplete; skipping Access coverage'
+		return
+	fi
+	if ! tunnel_api_load_token "$token_file" 2> /dev/null; then
+		_apl_warn 'api token unavailable; skipping Access coverage'
+		return
+	fi
+	local hosts apps host
+	hosts=$(cf_tunnel_get_ingress "$account" "$tunnel" 2> /dev/null \
+		| jq -r '.[].hostname // empty' 2> /dev/null)
+	apps=$(cf_call GET "/accounts/$account/access/apps" 2> /dev/null \
+		| jq -r '.[].domain' 2> /dev/null)
+	if [[ -z $hosts ]]; then
+		_apl_warn 'no ingress hostnames recorded yet'
+		return
+	fi
+	while IFS= read -r host; do
+		[[ -z $host ]] && continue
+		if grep -qxF "$host" <<< "$apps"; then
+			_apl_pass "Access app gates $host"
+		else
+			_apl_fail "ingress hostname $host has NO Access app —" \
+				'it is PUBLIC behind the tunnel'
+		fi
+	done <<< "$hosts"
 }
 
 apl_check_tunnel_service() {
@@ -215,6 +268,7 @@ run_appliance_doctor() {
 		_apl_warn 'ss not available; skipping public-bind scan'
 	fi
 	apl_check_tunnel_config /etc/cloudflared/config.yml
+	apl_check_access_coverage
 	apl_check_tunnel_service
 	apl_check_unattended_upgrades
 

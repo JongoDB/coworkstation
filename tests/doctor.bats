@@ -197,6 +197,7 @@ EOF
 	apl_check_keyring() { :; }
 	apl_check_public_binds() { :; }
 	apl_check_tunnel_config() { :; }
+	apl_check_access_coverage() { :; }
 	apl_check_tunnel_service() { :; }
 	apl_check_unattended_upgrades() { :; }
 	command() {
@@ -217,6 +218,7 @@ EOF
 	apl_check_keyring() { :; }
 	apl_check_public_binds() { :; }
 	apl_check_tunnel_config() { :; }
+	apl_check_access_coverage() { :; }
 	apl_check_tunnel_service() { :; }
 	apl_check_unattended_upgrades() { :; }
 	command() {
@@ -266,4 +268,80 @@ EOF
 	mkdir -p "$TEST_TMP/home"
 	apl_check_session_layer alice ''
 	[[ $_apl_failures -eq 1 ]]
+}
+
+# =============================================================================
+# apl_check_engine_conf: backend=none (official engine, no KVM)
+# =============================================================================
+
+@test "engine_conf: official with backend=none is a WARN, not a FAIL" {
+	mkdir -p "$APPLIANCE_ETC"
+	printf 'engine=official\nreason=test\nbackend=none\n' \
+		> "$APPLIANCE_ETC/engine.conf"
+	run apl_check_engine_conf "$APPLIANCE_ETC/engine.conf"
+	[[ $output == *'WARN'* ]]
+	[[ $output == *'Cowork VM'* ]]
+	apl_check_engine_conf "$APPLIANCE_ETC/engine.conf"
+	[[ $_apl_failures -eq 0 ]]
+}
+
+# =============================================================================
+# apl_check_access_coverage
+# =============================================================================
+
+@test "access_coverage: api mode, gated hostname passes" {
+	mkdir -p "$APPLIANCE_ETC"
+	printf 'mode=api\ntunnel_id=tun-1\naccount_id=acct-1\ntoken_file=%s\n' \
+		"$TEST_TMP/tok" > "$APPLIANCE_ETC/tunnel.conf"
+	tunnel_conf_get() {
+		case "$1" in
+			token_file) printf '%s' "$TEST_TMP/tok" ;;
+			account_id) printf 'acct-1' ;;
+			tunnel_id)  printf 'tun-1' ;;
+		esac
+	}
+	tunnel_api_load_token() { :; }
+	cf_tunnel_get_ingress() {
+		printf '[{"hostname":"cws.example.com","service":"http://127.0.0.1:8443"},{"service":"http_status:404"}]'
+	}
+	cf_call() {
+		printf '[{"domain":"cws.example.com","id":"app-1"}]'
+	}
+	run apl_check_access_coverage
+	[[ $output == *'PASS'* ]]
+	[[ $output == *'cws.example.com'* ]]
+	apl_check_access_coverage
+	[[ $_apl_failures -eq 0 ]]
+}
+
+@test "access_coverage: api mode, UNGATED hostname is a FAIL" {
+	mkdir -p "$APPLIANCE_ETC"
+	printf 'mode=api\n' > "$APPLIANCE_ETC/tunnel.conf"
+	tunnel_conf_get() {
+		case "$1" in
+			token_file) printf '%s' "$TEST_TMP/tok" ;;
+			account_id) printf 'acct-1' ;;
+			tunnel_id)  printf 'tun-1' ;;
+		esac
+	}
+	tunnel_api_load_token() { :; }
+	cf_tunnel_get_ingress() {
+		printf '[{"hostname":"alice.cws.example.com","service":"http://127.0.0.1:8444"}]'
+	}
+	cf_call() { printf '[{"domain":"cws.example.com"}]'; }
+	run apl_check_access_coverage
+	[[ $output == *'FAIL'* ]]
+	[[ $output == *'PUBLIC'* ]]
+	apl_check_access_coverage
+	[[ $_apl_failures -eq 1 ]]
+}
+
+@test "access_coverage: manual mode with hostnames warns, never silent" {
+	local cfconf="$TEST_TMP/config.yml"
+	printf 'tunnel: t\ningress:\n  - hostname: cws.example.com\n    service: http://127.0.0.1:8443\n' \
+		> "$cfconf"
+	APPLIANCE_CLOUDFLARED_CONF="$cfconf"
+	run apl_check_access_coverage
+	[[ $output == *'WARN'* ]]
+	[[ $output == *'Access'* ]]
 }

@@ -24,9 +24,10 @@ life of the instance. The edge-wide Cloudflare token would be exposed
 to every user on the box. Fetch it after boot into a `0600` root file
 instead.
 
-Engine note: most VPSes have no nested virtualization, so engine
-auto-selection lands on this repo's build with the bwrap Cowork
-backend. That is the expected configuration, not a degraded one.
+Engine note: most VPSes have no nested virtualization, so the default
+official engine runs without the Cowork VM feature (everything else
+works; setup and the doctor say so). To trade the official binary for
+bwrap-backed Cowork, opt in explicitly with `--engine repo`.
 
 ## Raspberry Pi 5 (pi-gen)
 

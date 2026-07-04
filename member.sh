@@ -257,6 +257,9 @@ cmd_add() {
 		fi
 	fi
 	log_info "  first login: they sign into Claude and the keyring"
+	log_warn 'multi-user note: each member MUST sign in with their' \
+		"OWN Claude account (Anthropic's terms; shared sign-ins also" \
+		'trip account-security defenses from a datacenter IP)'
 }
 
 cmd_remove() {

@@ -324,3 +324,56 @@ teardown() {
 	# blank allow answer + token set => api-mode validation fires
 	[[ $output == *'--access-allow'* ]]
 }
+
+# =============================================================================
+# Reconcile-on-rerun (changed port / changed allow list)
+# =============================================================================
+
+@test "ingress_json_add: updates the service when a port changes" {
+	local out
+	out=$(printf '[{"hostname":"a.example.com","service":"http://127.0.0.1:8444"},{"service":"http_status:404"}]' \
+		| ingress_json_add a.example.com 8445)
+	[[ $(jq -r '.[0].service' <<< "$out") == 'http://127.0.0.1:8445' ]]
+	[[ $(jq 'length' <<< "$out") == '2' ]]
+}
+
+@test "cf_access_ensure_app: updates a policy whose include drifted" {
+	cf_api() {
+		printf '%s %s %s\n' "$1" "$2" "${3:-}" >> "$CALL_LOG"
+		case "$1 $2" in
+			'GET /accounts/acct-1/access/apps')
+				printf '{"success":true,"result":[{"id":"app-1","domain":"cws.example.com"}]}'
+				;;
+			'GET /accounts/acct-1/access/apps/app-1/policies')
+				printf '{"success":true,"result":[{"id":"pol-1","include":[{"email":{"email":"old@example.com"}}]}]}'
+				;;
+			'PUT /accounts/acct-1/access/apps/app-1/policies/pol-1'*)
+				printf '{"success":true,"result":{"id":"pol-1"}}'
+				;;
+			*) printf '{"success":true,"result":[]}' ;;
+		esac
+	}
+	run cf_access_ensure_app acct-1 cws.example.com 'new@example.com'
+	[[ $status -eq 0 ]]
+	[[ $output == *'updated allow policy'* ]]
+	grep -q 'PUT /accounts/acct-1/access/apps/app-1/policies/pol-1' \
+		"$CALL_LOG"
+}
+
+@test "cf_access_ensure_app: matching include is left untouched" {
+	cf_api() {
+		printf '%s %s %s\n' "$1" "$2" "${3:-}" >> "$CALL_LOG"
+		case "$1 $2" in
+			'GET /accounts/acct-1/access/apps')
+				printf '{"success":true,"result":[{"id":"app-1","domain":"cws.example.com"}]}'
+				;;
+			'GET /accounts/acct-1/access/apps/app-1/policies')
+				printf '{"success":true,"result":[{"id":"pol-1","include":[{"email":{"email":"same@example.com"}}]}]}'
+				;;
+			*) printf '{"success":true,"result":[]}' ;;
+		esac
+	}
+	run cf_access_ensure_app acct-1 cws.example.com 'same@example.com'
+	[[ $status -eq 0 ]]
+	! grep -qE '^(PUT|POST) .*policies' "$CALL_LOG"
+}

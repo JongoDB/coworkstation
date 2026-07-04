@@ -5,6 +5,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: engine auto-selection always picks the official Anthropic
+  build on Debian-family hosts.** Previously a KVM-less host silently
+  got the community `claude-desktop-debian` repackaging; now the
+  unmodified first-party binary is never traded away automatically —
+  without `/dev/kvm` the Cowork VM feature is reported unavailable
+  (`backend=none`, a doctor WARN) and the repo build requires an
+  explicit `--engine repo` opt-in with a terms warning.
+- README repositioned around single-user personal infrastructure and
+  the local-compute jobs the web can't do (Code tab on a real
+  filesystem, own MCP servers, persistent sessions). SSH-target mode
+  leads; multi-user is an "Advanced" section with the per-account terms
+  posture spelled out; `testbench/` is marked experimental.
+- `docs/design.md` gains a "Positioning & risk" section stating the
+  product bet, the multi-user posture, the engine legal posture, and
+  the triggers (web Cowork, mobile Code, first-party Linux computer
+  use) that should force a scope rethink.
+
+### Added
+
+- **Doctor: Access-coverage check.** In api mode the doctor enumerates
+  the tunnel's ingress hostnames and FAILs on any without a Cloudflare
+  Access application (a proxied hostname with no Access app is a public
+  desktop that looked healthy in every other check). Manual mode warns
+  that coverage can't be verified.
+- `member.sh add` prints a per-user-accounts terms warning; api mode
+  confirms the Access app was provisioned.
+- Reconcile-on-rerun: `ingress_json_add` updates a rule whose port
+  moved instead of keeping it stale, and `cf_access_ensure_app` updates
+  an existing allow policy when `--access-allow` changed.
+
 ### Fixed
 
 - **Zero-touch install no longer fails on a correctly-scoped token.** The

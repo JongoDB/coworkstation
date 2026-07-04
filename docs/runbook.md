@@ -68,11 +68,19 @@ Test environments for validating all of this (VPS → mini PC → Pi 5)
 are specified in
 [phases.md](phases.md#test-environments).
 
-## Member lifecycle
+## Member lifecycle (advanced — read the posture first)
+
+Multi-user is an advanced configuration, not the default pitch. Each
+member MUST sign in with their own Claude account — shared sign-ins
+violate Anthropic's terms and trip account-security defenses from a
+datacenter IP. A team-shaped deployment carries account-standing risk
+the operator accepts; see the Positioning & risk section of
+[design.md](design.md#positioning--risk).
 
 ```bash
 sudo ./member.sh add alice --quota-mem 6G --quota-cpu 200%
 sudo ./member.sh remove bob --keep-home
+sudo ./member.sh remove bob --yes        # non-interactive full removal
 ./member.sh list
 ```
 
@@ -82,7 +90,10 @@ and autostart. In **zero-touch (api) mode** the member's DNS record
 and Access application are created automatically too, leaving one
 manual follow-up; in manual mode there are two:
 
-1. **Access policy** for the new hostname (manual mode only).
+1. **Access policy** for the new hostname (manual mode only). Until it
+   exists the hostname is served by the tunnel and is **PUBLIC** —
+   `member.sh` warns loudly, and in api mode `./setup.sh doctor` FAILs
+   on any ingress hostname with no Access app.
 2. **First login** by the member: sign into their own Claude account;
    the keyring unlocks via PAM at session login from then on.
 

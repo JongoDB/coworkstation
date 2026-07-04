@@ -5,7 +5,7 @@
 A headless, internet-connected, team-accessible Claude Desktop server ("the appliance") built by composing upstream-maintained parts, so it inherits every Claude Desktop feature and fix without forking functionality.
 
 - **Base**: one always-on Linux box (x86_64 mini PC or arm64 SBC) running Claude Desktop
-- **Engine**: official Anthropic apt build by default; this repo's build where the official one can't run (no KVM, non-Debian, bwrap portability)
+- **Engine**: official Anthropic apt build, always, on Debian-family hosts (no KVM just means no Cowork VM feature); the community repo build only by explicit `--engine repo` opt-in, or as the fallback on non-Debian distros
 - **Access**: clientless, browser-only — per-user kasmVNC/Guacamole sessions behind Cloudflare Zero Trust (Tunnel + Access); SSH-target mode for Code-tab sessions from members' own desktop apps; Dispatch from phones
 - **Trust boundary**: identity-aware edge (Access + IdP SSO/MFA) + per-member Linux accounts and systemd slices + bwrap/KVM Cowork isolation + AppArmor
 - **Testing**: a multi-OS test bench (MCP tools over disposable displays and VMs) substitutes for the upstream computer-use gate
@@ -66,11 +66,11 @@ The appliance supports two interchangeable engines behind one provisioning inter
 
 Selection rule, encoded in the provisioning script:
 
-1. Debian-family + `/dev/kvm` available → **official build**. First-party updates, first-party Cowork VM.
-2. No KVM (cloud VPS without nested virt, LXC/containers, Android AVF experiments) → **repo build with `COWORK_VM_BACKEND=bwrap`**. Bubblewrap is the portability play: namespace isolation with zero virtualization requirements, plus the `coworkBwrapMounts` config surface (`additionalROBinds`, `additionalBinds`, `disabledDefaultBinds`, `{src, dst}` mapping) documented in [configuration.md](configuration.md#cowork-sandbox-mounts).
-3. Fedora/RHEL/Nix host → **repo build** (official is Debian-only today).
+1. Debian-family → **official build, always** (with or without `/dev/kvm`). Without KVM the Cowork VM feature is unavailable and both setup and the doctor say so plainly; nothing else is affected. `auto` never trades the unmodified first-party binary for a feature.
+2. `--engine repo` (explicit opt-in only) → **repo build with `COWORK_VM_BACKEND=bwrap`** on KVM-less hosts. Bubblewrap is the portability play: namespace isolation with zero virtualization requirements, plus the `coworkBwrapMounts` config surface. The repo build patches Anthropic's minified app — a different terms posture the operator must choose knowingly, which is why `auto` won't.
+3. Fedora/RHEL/Nix host → **repo build** as the automatic fallback (official is Debian-only today), with a warning.
 
-The doctor check (below) reports which rule fired and why, mirroring `claude-desktop --doctor`'s backend summary.
+The doctor check (below) reports which rule fired and why, and records the resulting Cowork backend (`kvm`, `bwrap`, or `none`).
 
 ## Access layer
 
@@ -224,3 +224,45 @@ Same conventions as the existing doctor: symptom-keyed output, distro-specific i
 4. **Team distribution** — managed-settings `sshConfigs` generator for SSH-target mode; Guacamole gateway option; admin runbook.
 5. **Images** — pi-gen image for Pi 5, cloud-init for VPS/mini-PC, CI smoke tests reusing the repo's BATS + headless-launch harness patterns.
 6. **R&D (explicitly deferred)** — native Linux computer use in the app, Sunshine profile tuning, Android AVF on-device experiments (repo build + bwrap; no nested KVM inside AVF), Mac-node automation for the macOS/iOS test leg.
+
+## Positioning & risk
+
+The product bet, stated so it can be falsified.
+
+**What this is.** Personal infrastructure: one developer's persistent,
+local-compute Claude Desktop, reachable from a tablet. The jobs the web
+app cannot do — Code-tab work on a real filesystem, user-supplied MCP
+servers, sessions that outlive the client device — are the whole value.
+Chat alone is better served by claude.ai in a browser; do not pitch this
+as a chat mirror.
+
+**Lead with SSH-target mode.** For Code-tab work, the box appearing in
+the member's own desktop app (`gen-sshconfigs.sh`) beats a VNC desktop
+on latency, battery, and fidelity. The browser desktop is the fallback
+for GUI-only needs (Cowork, the app itself), not the headline.
+
+**Multi-user is advanced, not core.** Per-member accounts are built
+correctly (own Linux account, own Claude sign-in, own Access gate), but
+a datacenter box fanning a team into Claude is the most terms-exposed
+and least-differentiated configuration — generic VDI (Kasm, Guacamole)
+does multi-user better, and Anthropic's anti-abuse systems see a shared
+datacenter IP. Keep `member.sh` working; never make it the pitch.
+
+**Engine posture is a legal posture.** The official build is the
+default because it is Anthropic's unmodified binary. The repo build
+(patched app, bwrap Cowork) is an operator's explicit choice. If
+Anthropic ships first-party bwrap-or-equivalent Cowork for KVM-less
+hosts, delete the repo engine the same week.
+
+**The existential risk is Anthropic closing the gap.** The day Cowork
+(or an equivalent agentic session) ships on web/mobile, the remote
+desktop loses its reason to exist. The durable niche is the
+local-compute one: your filesystem, your MCP servers, your hardware.
+Watch for: web Cowork, mobile Code tab, first-party Linux computer use.
+Any of these should trigger a scope rethink, not a feature race.
+
+**Watch the account-standing canary.** Datacenter-IP sign-ins,
+long-lived headless sessions, and multiple accounts per host are
+anti-abuse signals. If sign-in friction or session drops start
+appearing on a deployment, treat it as policy feedback — do not engineer
+around it.

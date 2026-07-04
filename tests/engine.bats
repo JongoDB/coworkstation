@@ -62,12 +62,30 @@ teardown() {
 	[[ $engine_reason == *'/dev/kvm present'* ]]
 }
 
-@test "select_engine: auto on ubuntu without kvm picks repo+bwrap" {
+@test "select_engine: auto on ubuntu without kvm stays OFFICIAL and warns" {
+	# The community build is explicit opt-in only: auto must never
+	# silently swap in a patched binary to gain the Cowork VM feature.
 	write_os_release ubuntu noble
 	APPLIANCE_DEV_KVM="$TEST_TMP/no-such-kvm"
+	run bash -c '
+		source "'"$SCRIPT_DIR"'/../lib/common.sh"
+		source "'"$SCRIPT_DIR"'/../lib/engine.sh"
+		APPLIANCE_OS_RELEASE="'"$TEST_TMP"'/os-release"
+		APPLIANCE_DEV_KVM="'"$TEST_TMP"'/no-such-kvm"
+		select_engine auto
+		printf "choice=%s\n" "$engine_choice"
+	' 2>&1
+	[[ $output == *'choice=official'* ]]
+	[[ $output == *'--engine repo'* ]]
 	select_engine auto
-	[[ $engine_choice == 'repo' ]]
-	[[ $engine_reason == *'bwrap'* ]]
+	[[ $engine_choice == 'official' ]]
+	[[ $engine_reason == *'Cowork VM'* ]]
+}
+
+@test "select_engine: --engine repo warns about the community build" {
+	run select_engine repo
+	[[ $status -eq 0 ]]
+	[[ $output == *'opting into'* ]]
 }
 
 @test "select_engine: auto on fedora picks repo regardless of kvm" {
@@ -95,7 +113,7 @@ teardown() {
 	grep -q '^backend=kvm$' "$APPLIANCE_ETC/engine.conf"
 }
 
-@test "install_engine: repo without kvm records bwrap and writes env" {
+@test "install_engine: explicit repo without kvm records bwrap + env" {
 	write_os_release ubuntu noble
 	APPLIANCE_DEV_KVM="$TEST_TMP/no-such-kvm"
 	_engine_install_repo() { return 0; }
@@ -103,7 +121,7 @@ teardown() {
 	run_as_user() { shift; "$@"; }
 	mkdir -p "$TEST_TMP/home"
 	chown() { return 0; }
-	select_engine auto
+	select_engine repo
 	install_engine alice
 	grep -q '^backend=bwrap$' "$APPLIANCE_ETC/engine.conf"
 	local env_file
@@ -111,6 +129,18 @@ teardown() {
 	env_file+='/60-claude-appliance.conf'
 	[[ -f $env_file ]]
 	grep -q '^COWORK_VM_BACKEND=bwrap$' "$env_file"
+}
+
+@test "install_engine: official without kvm records backend=none" {
+	write_os_release ubuntu noble
+	APPLIANCE_DEV_KVM="$TEST_TMP/no-such-kvm"
+	_engine_install_official() { return 0; }
+	select_engine auto
+	install_engine alice
+	grep -q '^engine=official$' "$APPLIANCE_ETC/engine.conf"
+	grep -q '^backend=none$' "$APPLIANCE_ETC/engine.conf"
+	# no bwrap env written for the official engine
+	[[ ! -e $TEST_TMP/home/.config/environment.d/60-claude-appliance.conf ]]
 }
 
 @test "install_engine: engine.conf is refreshed on re-run" {

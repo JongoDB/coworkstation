@@ -1,21 +1,23 @@
 # Coworkstation
 
-Turn a bare Linux box into a **self-hosted Claude Desktop / Cowork workstation** you reach from any browser (iPad, Android, laptop) behind Cloudflare Access.
+Your own **always-on Claude Desktop box** — a personal Linux workstation running Anthropic's official Claude Desktop, reachable from any browser (iPad, Android, laptop) behind Cloudflare Access. The job it does that the web can't: **persistent, local-compute Claude** — Code-tab work on a real filesystem, your own MCP servers, long-running sessions that survive you closing the lid — without carrying a laptop.
 
-> **Not affiliated with Anthropic.** Coworkstation installs and wires up the Claude Desktop app; it does not modify or redistribute it. You are responsible for complying with [Anthropic's terms](https://www.anthropic.com/legal/consumer-terms) and your plan tier — in particular, each person must sign in with their **own** Claude account. See [License & terms](#license--terms).
+> **Not affiliated with Anthropic.** Coworkstation installs Anthropic's official Claude Desktop package and wires up access to it; by default it does not modify or redistribute the app. You are responsible for complying with [Anthropic's terms](https://www.anthropic.com/legal/consumer-terms) and your plan tier. See [License & terms](#license--terms).
 
 ## Before you start
 
 Coworkstation provisions the box; it does not create these for you:
 
 - A **domain on Cloudflare** — the zone's nameservers must already be delegated to Cloudflare (an active zone, not just a registration).
-- A **Cloudflare Zero Trust organization** with at least one login method (the default one-time-PIN works; Google/Entra/GitHub/OIDC if you've configured them). Access uses this to authenticate users.
+- A **Cloudflare Zero Trust organization** with at least one login method (the default one-time-PIN works; Google/Entra/GitHub/OIDC if configured). Access uses this to authenticate you.
 - A **fresh VPS/mini-PC**: Ubuntu 24.04 or Debian 12+, **≥ 4 GB RAM** and **≥ 25 GB disk** per active session (an Electron app + XFCE + kasmVNC is not tiny). x86-64 or arm64.
-- A **Claude subscription** for each member. The tunnel runs on this same box (outbound-only) — no second machine.
+- A **Claude subscription**. The tunnel runs on this same box (outbound-only) — no second machine.
+
+**KVM note:** Cowork's VM feature needs `/dev/kvm`, which most cheap VPSes don't expose. Without it, everything else (chat, Code tab, MCP, projects) works on the official app — setup tells you plainly. A mini-PC or KVM-capable host gets you the full feature set.
 
 ## Install
 
-Coworkstation is an **installer/orchestrator**, not a binary app — there's no `.deb` to download, because the actual Claude Desktop binary is installed *by* Coworkstation from its upstream source (see [How it works](#how-it-works)). Run the zero-touch form with your hostname, a scoped Cloudflare token, and an allow-list:
+Coworkstation is an **installer/orchestrator**, not a binary app — there's no `.deb` to download, because the actual Claude Desktop binary is installed *by* Coworkstation from Anthropic's apt repository (see [Engines](#engines)). Run the zero-touch form with your hostname, a scoped Cloudflare token, and your email:
 
 ```bash
 # 1. Put a scoped Cloudflare API token in a file (see "Cloudflare token" below):
@@ -35,7 +37,7 @@ sudo coworkstation/setup.sh
 
 The piped `curl | sudo bash` form is **non-interactive** (its stdin is the pipe) — pass the flags. Only the clone-and-run form in a terminal starts the wizard.
 
-That single command provisions the engine, a per-user kasmVNC session, the Cloudflare tunnel + DNS + Access policy, and the connector. Full walkthrough: [`docs/runbook.md`](docs/runbook.md).
+That single command provisions the engine, a kasmVNC session, the Cloudflare tunnel + DNS + Access policy, and the connector. Full walkthrough: [`docs/runbook.md`](docs/runbook.md).
 
 ### Cloudflare token
 
@@ -49,13 +51,10 @@ In the Cloudflare dashboard: **My Profile → API Tokens → Create Token → Cr
 
 Coworkstation discovers your account id **from the zone**, so the token does not need account-list permission — but it *does* need the Zone and Account resources set to *Include* the right ones, or the API calls fail.
 
-## How it works
+## Engines
 
-Coworkstation **composes upstream-maintained parts** — it consumes Claude Desktop engines rather than forking them, so it grows with the real thing:
-
-- **Engine**: Anthropic's official Claude Desktop for Linux where KVM is available; the [`claude-desktop-debian`](https://github.com/aaddrick/claude-desktop-debian) build (bwrap Cowork backend) everywhere else. Auto-selected. On a typical VPS without `/dev/kvm` this is the repo build — see [License & terms](#license--terms) for what that means.
-- **Access**: browser-only — per-user kasmVNC sessions behind a **Cloudflare Zero Trust** tunnel + Access (SSO/MFA). No client install, no open inbound ports.
-- **Storage**: project folders can live in the member's Google Drive / OneDrive / Dropbox via rclone with a bounded local cache, so the box stays small.
+- **`official` (the default, always).** Anthropic's own apt build, unmodified — the only engine squarely within the app's terms, and the one the project stands behind. Without `/dev/kvm` the Cowork VM feature is unavailable and setup + doctor say so; nothing else is affected.
+- **`repo` (explicit opt-in only, `--engine repo`).** The community [`claude-desktop-debian`](https://github.com/aaddrick/claude-desktop-debian) repackaging, which patches the app to back Cowork with bwrap on KVM-less hosts. `auto` never selects it on a Debian-family host — choosing a modified binary is a terms posture you must pick knowingly. It is also the automatic fallback on non-Debian distros, where no official build exists.
 
 ## What you get
 
@@ -63,11 +62,10 @@ Coworkstation **composes upstream-maintained parts** — it consumes Claude Desk
 |---|---|
 | **Guided install** | `setup.sh` with an interactive wizard, or fully non-interactive flags for cloud-init |
 | **Zero-touch edge** | `--cf-api-token-file` provisions the Cloudflare tunnel, DNS, and Access policy via API — no `cloudflared tunnel login` |
-| **Multi-user** | `member.sh add/remove/list` — per-member Linux account, systemd slice quotas, own session + hostname |
-| **Remote storage** | `storage.sh` mounts cloud drives with a bounded cache |
-| **Test bench** | MCP servers for GUI app-testing on disposable displays and QEMU guests (a computer-use substitute) |
-| **SSH-target mode** | `gen-sshconfigs.sh` makes the box appear in members' own desktop apps for Code-tab work |
-| **Doctor** | `./setup.sh doctor` — fails loudly on any session port bound beyond loopback; verifies a live listener |
+| **SSH-target mode** | `gen-sshconfigs.sh` makes the box appear in your own desktop app's environment picker for Code-tab work — often the best experience, no VNC needed |
+| **Browser desktop** | a kasmVNC session behind Access when you need the full GUI (Cowork, the desktop app itself) |
+| **Remote storage** | `storage.sh` mounts Google Drive / OneDrive / Dropbox with a bounded cache, so the box stays small |
+| **Doctor** | `./setup.sh doctor` — verifies a live loopback listener, flags any session port bound beyond loopback, and **checks every tunnel hostname has an Access policy** |
 
 ## Signing in
 
@@ -79,11 +77,23 @@ Two gates protect the session:
    sudo cat /home/<user>/.vnc/kasm-credentials
    ```
 
-Open `https://<hostname>`, pass the Access login, enter the kasmVNC credentials, then sign into Claude Desktop inside the session. The member's Claude sign-in populates the keyring on first use.
+Open `https://<hostname>`, pass the Access login, enter the kasmVNC credentials, then sign into Claude Desktop inside the session. Your Claude sign-in populates the keyring on first use.
+
+## Advanced: more than one person (read this first)
+
+`member.sh add/remove/list` can host additional people — per-member Linux account (0700 home), systemd slice quotas, own session/port/hostname, own Access gate. **Before you use it, understand the posture:**
+
+- **Each member signs in with their own Claude account.** Sharing one Claude login across people violates Anthropic's terms, and a shared session from a datacenter IP is exactly what account-security systems flag.
+- A multi-user datacenter box fanning people into Claude is a **materially riskier arrangement** than personal use — account standing is your risk to accept, and generic multi-user VDI (Kasm Workspaces, Guacamole) may serve a team better.
+- In manual tunnel mode a new member hostname is **public until you add its Access policy** — `member.sh` warns loudly and `./setup.sh doctor` fails on any ungated hostname in api mode.
+
+## Extras (experimental)
+
+`testbench/` ships MCP servers for GUI app-testing on disposable displays and QEMU guests — a computer-use substitute for testing desktop apps Claude builds. It is **experimental, unvalidated on real hardware, and may be split out or removed**; don't build a workflow on it yet.
 
 ## Docs
 
-- [`docs/design.md`](docs/design.md) — architecture, feature-parity matrix, access model, multi-tenancy
+- [`docs/design.md`](docs/design.md) — architecture, positioning & risk, access model, multi-tenancy
 - [`docs/phases.md`](docs/phases.md) — component specs, acceptance criteria, test environments, sizing
 - [`docs/runbook.md`](docs/runbook.md) — provision, members, edge, storage, backup, troubleshooting
 
@@ -93,7 +103,7 @@ Open `https://<hostname>`, pass the Access login, enter the kasmVNC credentials,
 install.sh                                         # network installer (curl | sudo bash)
 setup.sh member.sh storage.sh gen-sshconfigs.sh   # entry points
 lib/            # common, engine selection, doctor, tunnel API, session profiles
-testbench/      # computer-use-substitute MCP servers
+testbench/      # experimental computer-use-substitute MCP servers
 images/         # cloud-init + Pi notes
 tests/          # BATS suites (run: bats tests/*.bats)
 ```
@@ -107,15 +117,11 @@ shellcheck -x install.sh setup.sh member.sh storage.sh gen-sshconfigs.sh lib/*.s
 
 ## Status
 
-**Alpha.** One happy path is hardware-validated end-to-end: an x86 VPS on the **repo engine + bwrap** backend (no `/dev/kvm`), serving kasmVNC behind Cloudflare Access with `./setup.sh doctor` clean. The **official-engine + KVM** path (Tier 2, mini-PC) and the Raspberry Pi path (Tier 3) are specified in [`docs/phases.md`](docs/phases.md#test-environments) but **not yet hardware-verified**. The BATS suite validates script logic and dry-run plans, not that Claude Desktop works over Access at scale. Computer use on Linux is not available upstream; the test bench is the substitute for the app-testing use case.
+**Alpha.** Hardware-validated end-to-end on an x86 VPS: bare Ubuntu 24.04 → the documented install → kasmVNC behind Cloudflare Access, doctor clean. The Cowork **VM feature specifically** is validated only on the opt-in repo engine (bwrap); on the default official engine it requires a KVM-capable host, which has not been hardware-verified yet. Raspberry Pi (Tier 3) is specified but unverified. The BATS suite validates script logic and dry-run plans, not Claude Desktop itself at scale.
 
 ## License & terms
 
 Coworkstation's own scripts are **MIT** (see [LICENSE](LICENSE)). That covers this orchestrator only — **not** the Claude Desktop application it installs, which is Anthropic's proprietary software under [Anthropic's Consumer Terms](https://www.anthropic.com/legal/consumer-terms).
 
-Two things to understand before running this for more than yourself:
-
-- **Per-user accounts.** Coworkstation gives every member their own Linux account and their own Claude sign-in. Do not share a single Claude login across people — that violates Anthropic's terms and trips account-security defenses (datacenter IP + shared session is exactly what anti-abuse systems flag).
-- **The default engine on a typical VPS is the repo build.** Without `/dev/kvm`, Coworkstation installs [`claude-desktop-debian`](https://github.com/aaddrick/claude-desktop-debian), a community repackaging of the app. If you want to stay strictly on Anthropic's official binary, use a host with KVM and pass `--engine official`.
-
-This project is not affiliated with, endorsed by, or supported by Anthropic. Running a shared, headless, multi-user deployment carries account-standing risk that is yours to accept.
+- The **default engine is Anthropic's official, unmodified package.** The community `repo` engine (a repackaging that patches the app) is available only by explicit `--engine repo` opt-in, and choosing it is your call to make against Anthropic's terms.
+- **Per-user accounts, always.** One person per Claude sign-in. This project is not affiliated with, endorsed by, or supported by Anthropic; running headless/multi-user deployments carries account-standing risk that is yours to accept.

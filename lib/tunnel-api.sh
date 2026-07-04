@@ -155,18 +155,23 @@ cf_tunnel_get_ingress() {
 
 # Pure transform: insert hostname->port before the catch-all, keeping
 # the catch-all last and existing rules intact. Reads ingress JSON on
-# stdin, writes the new array on stdout. Idempotent per hostname.
+# stdin, writes the new array on stdout. Idempotent per hostname AND
+# reconciling: an existing rule whose service differs (a member's port
+# moved) is updated in place, not silently kept stale.
 ingress_json_add() {
 	local hostname="$1"
 	local port="$2"
 	jq --arg h "$hostname" --arg p "$port" '
-		if any(.[]; .hostname == $h) then .
-		else
+		("http://127.0.0.1:" + $p) as $svc
+		| if any(.[]; .hostname == $h and .service == $svc) then .
+		  elif any(.[]; .hostname == $h) then
+			[.[] | if .hostname == $h
+			       then .service = $svc else . end]
+		  else
 			[.[] | select(.service != "http_status:404")]
-			+ [{hostname: $h,
-			    service: ("http://127.0.0.1:" + $p)}]
+			+ [{hostname: $h, service: $svc}]
 			+ [{service: "http_status:404"}]
-		end'
+		  end'
 }
 
 # Pure transform: drop a hostname rule. stdin/stdout as above.
@@ -250,18 +255,35 @@ cf_access_ensure_app() {
 	else
 		log_info "Access app for $hostname already present"
 	fi
-	local policies
-	policies=$(cf_call GET \
-		"/accounts/$account/access/apps/$app_id/policies" \
-		| jq 'length') || return 1
-	if [[ $policies -eq 0 ]]; then
+	# Create the allow policy, or reconcile an existing one whose
+	# include list no longer matches --access-allow (a changed allow
+	# list used to be silently ignored on re-run).
+	local resp want have policy_id
+	resp=$(cf_call GET \
+		"/accounts/$account/access/apps/$app_id/policies") || return 1
+	want=$(access_include_json "$allow_csv")
+	if [[ $(jq 'length' <<< "$resp") -eq 0 ]]; then
 		cf_call POST \
 			"/accounts/$account/access/apps/$app_id/policies" \
-			"$(jq -n --argjson inc \
-				"$(access_include_json "$allow_csv")" \
+			"$(jq -n --argjson inc "$want" \
 				'{name: "appliance members", decision: "allow",
 				  include: $inc}')" > /dev/null || return 1
 		log_info "created allow policy ($allow_csv)"
+		return 0
+	fi
+	policy_id=$(jq -r '.[0].id' <<< "$resp")
+	have=$(jq -cS '[.[0].include[]? | {email: .email, email_domain:
+		.email_domain} | with_entries(select(.value != null))]' \
+		<<< "$resp")
+	# Quote the RHS: inside [[ ]] an unquoted != operand is a glob
+	# pattern, and JSON's [ ] { } make it one that never matches.
+	if [[ $have != "$(jq -cS . <<< "$want")" ]]; then
+		cf_call PUT \
+			"/accounts/$account/access/apps/$app_id/policies/$policy_id" \
+			"$(jq -n --argjson inc "$want" \
+				'{name: "appliance members", decision: "allow",
+				  include: $inc}')" > /dev/null || return 1
+		log_info "updated allow policy to match ($allow_csv)"
 	fi
 }
 
