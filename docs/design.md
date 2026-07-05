@@ -267,7 +267,7 @@ anti-abuse signals. If sign-in friction or session drops start
 appearing on a deployment, treat it as policy feedback — do not engineer
 around it.
 
-## Client bridge (proposed — not yet built)
+## Client bridge (all three tiers SHIPPED)
 
 Make the *client device* a source and sensor for the remote Claude
 session, closing the loop the cloud-drive mount opens. Three tiers,
@@ -280,13 +280,18 @@ by what each platform can actually do:
    only the picked folder syncs. Cowork mounts and the Code tab work
    on client files with zero further integration. Cloud-drive mounts
    (`cws storage add`) are the optional, user-configured alternative.
-2. **Browser bridge** — a small page served behind the SAME Access
+2. **SHIPPED: browser bridge** — a small page served behind the SAME Access
    gate as the session: (a) folder share via the File System Access
    API (desktop Chrome/Edge; mobile browsers cannot pick directories),
    streamed to the box; (b) client screen share via `getDisplayMedia`,
    frames exposed to Claude through a `client-screen` MCP server on
    the box. "Claude, look at what's on my screen" from a plain
-   browser tab — no client install.
+   browser tab — no client install. Also (c) a clipboard bridge
+   (device ↔ box session clipboard via xclip, file fallback) — the
+   WebKit/iPad path kasmVNC's Chromium-only seamless clipboard
+   cannot serve — and (d) the page is an installable PWA (manifest +
+   network-first service worker; the link token is remembered per
+   device in localStorage on the Access-gated origin).
 3. **SHIPPED: laptop live-mount** (`client/cws-client`) — laptops
    running their own Claude Desktop against the box reverse-mount a
    local folder INTO the box (`sshfs -o passive` piped over the SSH

@@ -13,6 +13,13 @@
  *   - screen share: getDisplayMedia frames, ~1 fps JPEG, kept ONLY as
  *     the latest frame in the user's runtime dir (tmpfs — nothing
  *     persists) for the client-screen MCP server to hand to Claude.
+ *   - clipboard bridge: shuttles text between the device clipboard
+ *     and the box session's X clipboard (xclip; file fallback) —
+ *     the WebKit/iPad path kasmVNC's viewer cannot offer.
+ *
+ * The page is an installable PWA (manifest + tiny network-first
+ * service worker); the link token is remembered in localStorage so
+ * the home-screen app works without re-pasting the URL.
  *
  * Consent posture: both shares are user-initiated per session, the
  * page shows a loud SHARING banner, and closing the tab stops
@@ -31,6 +38,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 
 const PORT = parseInt(process.env.CWS_BRIDGE_PORT || '8600', 10);
 const TOKEN_FILE = process.env.CWS_BRIDGE_TOKEN_FILE ||
@@ -41,6 +49,16 @@ const RUNTIME_DIR = process.env.CWS_BRIDGE_RUNTIME_DIR ||
     path.join(process.env.XDG_RUNTIME_DIR || '/tmp', 'cws-bridge');
 const MAX_BODY = 64 * 1024 * 1024;      // 64 MiB per file
 const MAX_FRAME = 8 * 1024 * 1024;      // 8 MiB per frame
+const MAX_CLIP = 1024 * 1024;           // 1 MiB of clipboard text
+
+// Clipboard target: the box session's X clipboard via xclip when a
+// DISPLAY is known; otherwise a runtime-dir file (also the test mode,
+// CWS_BRIDGE_CLIP_MODE=file). The file fallback still round-trips
+// between devices through the page — it just doesn't reach the X
+// session's Ctrl-V.
+const CLIP_MODE = process.env.CWS_BRIDGE_CLIP_MODE || 'auto';
+const CLIP_DISPLAY = process.env.CWS_BRIDGE_DISPLAY ||
+    process.env.DISPLAY || '';
 
 let token = '';
 try {
@@ -72,6 +90,47 @@ function safeJoin(root, share, rel) {
         return null;
     }
     return full;
+}
+
+function clipFile() { return path.join(RUNTIME_DIR, 'clipboard.txt'); }
+
+function xclip(args, input) {
+    return new Promise((resolve, reject) => {
+        const child = execFile('xclip',
+            ['-selection', 'clipboard'].concat(args),
+            { env: { ...process.env, DISPLAY: CLIP_DISPLAY },
+              timeout: 3000, maxBuffer: MAX_CLIP },
+            (err, stdout) => err ? reject(err) : resolve(stdout));
+        if (input !== undefined) {
+            child.stdin.on('error', () => { /* xclip died; cb has it */ });
+            child.stdin.end(input);
+        }
+    });
+}
+
+async function clipRead() {
+    if (CLIP_MODE !== 'file' && CLIP_DISPLAY) {
+        try {
+            return { text: await xclip(['-o']), source: 'session' };
+        } catch (err) { /* fall through to the file */ }
+    }
+    try {
+        return { text: fs.readFileSync(clipFile(), 'utf8'), source: 'file' };
+    } catch (err) {
+        return { text: '', source: 'empty' };
+    }
+}
+
+async function clipWrite(text) {
+    // Always mirror to the file so a fetch works even if xclip dies.
+    fs.writeFileSync(clipFile(), text, { mode: 0o600 });
+    if (CLIP_MODE !== 'file' && CLIP_DISPLAY) {
+        try {
+            await xclip(['-i'], text);
+            return 'session';
+        } catch (err) { /* file mirror already written */ }
+    }
+    return 'file';
 }
 
 function readBody(req, limit) {
@@ -113,6 +172,22 @@ async function handle(req, res) {
         json(res, 200, { ok: true });
         return;
     }
+    // PWA shell assets: same trust level as the page itself.
+    if (req.method === 'GET' && p === '/bridge/manifest.webmanifest') {
+        res.writeHead(200, { 'Content-Type': 'application/manifest+json' });
+        res.end(MANIFEST);
+        return;
+    }
+    if (req.method === 'GET' && p === '/bridge/sw.js') {
+        res.writeHead(200, { 'Content-Type': 'text/javascript' });
+        res.end(SW);
+        return;
+    }
+    if (req.method === 'GET' && p === '/bridge/icon.svg') {
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+        res.end(ICON);
+        return;
+    }
 
     if (!authed(req)) {
         json(res, 401, { error: 'missing or bad bridge token' });
@@ -146,6 +221,19 @@ async function handle(req, res) {
         return;
     }
 
+    if (req.method === 'GET' && p === '/bridge/clipboard') {
+        const clip = await clipRead();
+        json(res, 200, { ok: true, text: clip.text, source: clip.source });
+        return;
+    }
+
+    if (req.method === 'POST' && p === '/bridge/clipboard') {
+        const body = await readBody(req, MAX_CLIP);
+        const target = await clipWrite(body.toString('utf8'));
+        json(res, 200, { ok: true, target: target });
+        return;
+    }
+
     if (req.method === 'GET' && p === '/bridge/status') {
         let frame = null;
         try {
@@ -171,6 +259,12 @@ const PAGE = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Coworkstation bridge</title>
+<link rel="manifest" href="/bridge/manifest.webmanifest">
+<link rel="icon" href="/bridge/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/bridge/icon.svg">
+<meta name="theme-color" content="#1b2a4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Coworkstation">
 <style>
  body{font-family:system-ui,sans-serif;margin:2rem auto;max-width:640px;
       padding:0 1rem;line-height:1.5}
@@ -197,10 +291,30 @@ or tab). Ask it to use the <code>client_screenshot</code> tool.</p>
 box. Re-sync any time; nothing else on this device is touched.</p>
 <button id="pickFolder">Pick a folder & sync</button>
 <button id="resync">Re-sync</button>
+<h2>Clipboard</h2>
+<p>Bridges this device's clipboard and the box session's clipboard —
+works on iPad/Safari, where the desktop viewer can't. Text passes
+through the box only.</p>
+<textarea id="clipText" rows="3" style="width:100%;font:inherit"
+ placeholder="Paste here (or use Send to read this device's clipboard)"
+></textarea><br>
+<button id="clipSend">Send to box</button>
+<button id="clipFetch">Fetch from box</button>
+<p><small>Tip: install this page as an app (Share &rarr; Add to Home
+Screen) — the link's token is remembered on this device.</small></p>
 <p id="log"></p>
 <script>
-const token = new URLSearchParams(location.search).get('t') ||
+// The install-to-home-screen flow loses the URL token, so remember it
+// per device. This origin is already gated by Cloudflare Access.
+let token = new URLSearchParams(location.search).get('t') ||
     (location.hash || '').replace(/^#t=/, '');
+try {
+    if (token) localStorage.setItem('cws-bridge-token', token);
+    else token = localStorage.getItem('cws-bridge-token') || '';
+} catch (e) { /* storage disabled; URL token still works */ }
+if (navigator.serviceWorker) {
+    navigator.serviceWorker.register('/bridge/sw.js').catch(() => {});
+}
 const log = (m, cls) => {
     const el = document.getElementById('log');
     el.textContent = m; el.className = cls || '';
@@ -271,7 +385,96 @@ document.getElementById('pickFolder').onclick = async () => {
 };
 document.getElementById('resync').onclick =
     () => syncDir().catch(e => log(String(e), 'err'));
+
+const clipBox = document.getElementById('clipText');
+document.getElementById('clipSend').onclick = async () => {
+    try {
+        // Prefer the device clipboard; WebKit allows readText only on
+        // a user gesture, and may still decline — textarea is the
+        // universal fallback.
+        if (!clipBox.value && navigator.clipboard &&
+            navigator.clipboard.readText) {
+            clipBox.value = await navigator.clipboard.readText()
+                .catch(() => '');
+        }
+        if (!clipBox.value) {
+            log('Nothing to send — paste into the box above first.', 'err');
+            return;
+        }
+        const r = await fetch('/bridge/clipboard',
+            { method: 'POST', headers: hdrs, body: clipBox.value });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.status);
+        log('Sent to the box clipboard (' + j.target + ').', 'ok');
+    } catch (e) { log('Send failed: ' + e, 'err'); }
+};
+document.getElementById('clipFetch').onclick = async () => {
+    try {
+        const r = await fetch('/bridge/clipboard', { headers: hdrs });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.status);
+        clipBox.value = j.text;
+        // Same user gesture, so WebKit permits the write; if it
+        // declines, the text is in the box for a manual copy.
+        let copied = false;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            copied = await navigator.clipboard.writeText(j.text)
+                .then(() => true, () => false);
+        }
+        log(copied ? 'Box clipboard copied to this device.'
+                   : 'Fetched — long-press the text above to copy.', 'ok');
+    } catch (e) { log('Fetch failed: ' + e, 'err'); }
+};
 </script></body></html>`;
+
+const MANIFEST = JSON.stringify({
+    name: 'Coworkstation',
+    short_name: 'Coworkstation',
+    description: 'Client bridge for your Coworkstation box',
+    start_url: '/bridge/',
+    scope: '/bridge/',
+    display: 'standalone',
+    background_color: '#1b2a4a',
+    theme_color: '#1b2a4a',
+    icons: [{
+        src: '/bridge/icon.svg',
+        sizes: 'any',
+        type: 'image/svg+xml',
+        purpose: 'any',
+    }],
+});
+
+const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<rect width="64" height="64" rx="12" fill="#1b2a4a"/>
+<rect x="10" y="14" width="44" height="28" rx="4" fill="none"
+ stroke="#e8ecf5" stroke-width="4"/>
+<path d="M22 52h20M32 42v10" stroke="#e8ecf5" stroke-width="4"
+ stroke-linecap="round"/>
+<circle cx="32" cy="28" r="6" fill="#e8ecf5"/>
+</svg>`;
+
+// Network-first shell cache: the page still opens (with its saved
+// token) during a brief tunnel blip; API calls are never cached.
+const SW = `const SHELL = ['/bridge/', '/bridge/icon.svg'];
+self.addEventListener('install', (e) => {
+    e.waitUntil(caches.open('cws-bridge-v1')
+        .then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', (e) => {
+    e.waitUntil(self.clients.claim());
+});
+self.addEventListener('fetch', (e) => {
+    const url = new URL(e.request.url);
+    if (e.request.method !== 'GET' ||
+        !SHELL.includes(url.pathname)) return;
+    e.respondWith(fetch(e.request).then((r) => {
+        const copy = r.clone();
+        caches.open('cws-bridge-v1')
+            .then((c) => c.put(e.request, copy));
+        return r;
+    }).catch(() => caches.match(e.request)));
+});
+`;
 
 const server = http.createServer((req, res) => {
     handle(req, res).catch((err) => {

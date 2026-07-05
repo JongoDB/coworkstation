@@ -57,12 +57,15 @@ teardown() {
 	[[ $(jq 'length' <<< "$moved") == $(jq 'length' <<< "$once") ]]
 }
 
-@test "clientbridge_unit: env port + node server wired in" {
+@test "clientbridge_unit: env port + display + node server wired in" {
 	local unit
-	unit=$(clientbridge_unit /opt/coworkstation/bridge 8601)
+	unit=$(clientbridge_unit /opt/coworkstation/bridge 8601 2)
 	[[ $unit == *'CWS_BRIDGE_PORT=8601'* ]]
+	[[ $unit == *'CWS_BRIDGE_DISPLAY=:2'* ]]
 	[[ $unit == *'node /opt/coworkstation/bridge/server.js'* ]]
 	[[ $unit == *'WantedBy=default.target'* ]]
+	unit=$(clientbridge_unit /opt/b 8600)
+	[[ $unit == *'CWS_BRIDGE_DISPLAY=:1'* ]]
 }
 
 @test "clientbridge_mcp_snippet: merges without clobbering other keys" {

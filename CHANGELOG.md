@@ -25,6 +25,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   helper (`client/cws-client`) reverse-mounts a local folder into the
   box over SSH-target mode. All provisioned per user, non-fatal,
   re-runnable; live node harness + BATS cover them.
+- **Bridge PWA + clipboard bridge.** The bridge page is installable
+  (manifest, icon, network-first service worker; the link token is
+  remembered per device) and gains a token-gated clipboard bridge
+  (`/bridge/clipboard`) shuttling text between the device and the box
+  session's X clipboard (xclip on the session display, file
+  fallback) — closes the iPad/WebKit clipboard gap kasmVNC leaves
+  (seamless clipboard is Chromium-only). See ADR-003.
 - **ClientSync — device↔box file sync is now the default, out of the
   box.** Every user gets a Syncthing instance and `~/ClientSync` at
   setup (and per member at `member.sh add`); `cws client

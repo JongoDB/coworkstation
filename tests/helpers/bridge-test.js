@@ -35,6 +35,7 @@ async function main() {
             CWS_BRIDGE_TOKEN_FILE: tokenFile,
             CWS_BRIDGE_FILES_DIR: files,
             CWS_BRIDGE_RUNTIME_DIR: runtime,
+            CWS_BRIDGE_CLIP_MODE: 'file',
         },
         stdio: ['ignore', 'ignore', 'pipe'],
     });
@@ -61,11 +62,34 @@ async function main() {
     if (!html.includes('SCREEN SHARING IS ON')) {
         fail('consent banner missing from page');
     }
+    if (!html.includes('manifest.webmanifest') ||
+        !html.includes('clipFetch')) {
+        fail('PWA manifest link or clipboard UI missing from page');
+    }
+
+    // 1b) PWA shell assets serve without a token
+    let r = await fetch(`${base}/bridge/manifest.webmanifest`);
+    if (!r.ok) fail('manifest not served');
+    const manifest = await r.json();
+    if (manifest.start_url !== '/bridge/' || manifest.scope !== '/bridge/') {
+        fail('manifest start_url/scope wrong: ' + JSON.stringify(manifest));
+    }
+    r = await fetch(`${base}/bridge/sw.js`);
+    if (!r.ok || !(await r.text()).includes('cws-bridge-v1')) {
+        fail('service worker not served');
+    }
+    r = await fetch(`${base}/bridge/icon.svg`);
+    if (!r.ok || !(r.headers.get('content-type') || '')
+        .includes('image/svg+xml')) {
+        fail('icon not served as svg');
+    }
 
     // 2) endpoints refuse without the token
-    let r = await fetch(`${base}/bridge/frame`,
+    r = await fetch(`${base}/bridge/frame`,
         { method: 'POST', body: 'x' });
     if (r.status !== 401) fail('frame accepted without token');
+    r = await fetch(`${base}/bridge/clipboard`);
+    if (r.status !== 401) fail('clipboard read without token');
     r = await fetch(`${base}/bridge/file?share=s&path=a.txt`,
         { method: 'POST', body: 'x' });
     if (r.status !== 401) fail('file accepted without token');
@@ -103,6 +127,24 @@ async function main() {
     const st = await r.json();
     if (typeof st.frameAgeMs !== 'number' || st.frameAgeMs > 5000) {
         fail('status frame age wrong: ' + JSON.stringify(st));
+    }
+
+    // 4b) clipboard round-trip (file mode) + empty state
+    r = await fetch(`${base}/bridge/clipboard`, { headers: tok });
+    let clip = await r.json();
+    if (!r.ok || clip.text !== '' || clip.source !== 'empty') {
+        fail('fresh clipboard not empty: ' + JSON.stringify(clip));
+    }
+    const clipText = 'from the client device éà ✓';
+    r = await fetch(`${base}/bridge/clipboard`,
+        { method: 'POST', headers: tok, body: clipText });
+    if (!r.ok || (await r.json()).target !== 'file') {
+        fail('clipboard post failed');
+    }
+    r = await fetch(`${base}/bridge/clipboard`, { headers: tok });
+    clip = await r.json();
+    if (clip.text !== clipText || clip.source !== 'file') {
+        fail('clipboard round-trip mismatch: ' + JSON.stringify(clip));
     }
 
     // 5) MCP: client_screenshot returns the frame; stale frame refused

@@ -23,6 +23,12 @@
 clientbridge_port() { printf '%s' $((8599 + ${1:-1})); }
 
 clientbridge_install_packages() {
+	# xclip powers the clipboard bridge; missing is fine (the server
+	# falls back to a file), so don't fail setup over it.
+	if ! command -v xclip > /dev/null 2>&1; then
+		pkg_install xclip || log_warn 'xclip unavailable;' \
+			'clipboard bridge will use the file fallback'
+	fi
 	if command -v node > /dev/null 2>&1; then
 		return 0
 	fi
@@ -30,10 +36,11 @@ clientbridge_install_packages() {
 }
 
 # systemd user unit for the bridge server.
-# Args: bridge_dir port
+# Args: bridge_dir port display
 clientbridge_unit() {
 	local dir="$1"
 	local port="$2"
+	local display="${3:-1}"
 	cat << EOF
 [Unit]
 Description=Coworkstation client bridge
@@ -41,6 +48,7 @@ After=network.target
 
 [Service]
 Environment=CWS_BRIDGE_PORT=${port}
+Environment=CWS_BRIDGE_DISPLAY=:${display}
 ExecStart=/usr/bin/env node ${dir}/server.js
 Restart=on-failure
 RestartSec=5
@@ -130,7 +138,7 @@ clientbridge_setup() {
 
 	local unit_dir="$home/.config/systemd/user"
 	run_as_user "$user" mkdir -p "$unit_dir" || return 1
-	clientbridge_unit "$bridge_dir" "$port" \
+	clientbridge_unit "$bridge_dir" "$port" "$display" \
 		| write_file "$unit_dir/cws-bridge.service" || return 1
 	if [[ ${appliance_dry_run:-0} -ne 1 ]]; then
 		chown "$user:$user" "$unit_dir/cws-bridge.service"

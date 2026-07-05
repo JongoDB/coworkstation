@@ -145,6 +145,8 @@ Client apps: [Syncthing](https://syncthing.net) (Android/desktop), [Möbius Sync
 
 - **Screen share** — press "Start screen share"; Claude sees ~1 fps of the screen/window/tab you pick via its `client_screenshot` tool. Loud per-session consent: a red SHARING banner, and closing the tab stops it (stale frames are refused).
 - **Folder share** (desktop Chrome/Edge) — pick a folder; its files copy to `~/ClientBridge/<name>` on the box.
+- **Clipboard bridge** — copy/paste between the device and the box session, including on iPad/Safari where the desktop viewer's seamless clipboard doesn't reach (kasmVNC's is Chromium-only).
+- **Installable** — Share → Add to Home Screen makes it an app; the link's token is remembered on the device.
 
 ```bash
 sudo cws client bridge-link       # the tokened /bridge URL to open on the device
