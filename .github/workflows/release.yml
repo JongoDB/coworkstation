@@ -48,7 +48,7 @@ jobs:
             install.sh cws setup.sh member.sh storage.sh gen-sshconfigs.sh \
             testbench/setup.sh lib/*.sh lib/profiles/*.sh
           bats --print-output-on-failure \
-            tests/common.bats tests/cws.bats tests/engine.bats tests/doctor.bats \
+            tests/clientsync.bats tests/common.bats tests/cws.bats tests/engine.bats tests/doctor.bats \
             tests/install.bats \
             tests/kasmvnc.bats \
             tests/member.bats tests/storage.bats tests/setup.bats \

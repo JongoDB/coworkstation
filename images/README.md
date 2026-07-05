@@ -24,10 +24,10 @@ life of the instance. The edge-wide Cloudflare token would be exposed
 to every user on the box. Fetch it after boot into a `0600` root file
 instead.
 
-Engine note: most VPSes have no nested virtualization, so the default
-official engine runs without the Cowork VM feature (everything else
-works; setup and the doctor say so). To trade the official binary for
-bwrap-backed Cowork, opt in explicitly with `--engine repo`.
+Engine note: most VPSes have no nested virtualization, so the Cowork
+VM feature is unavailable there on either engine (everything else
+works; setup and the doctor say so plainly). A mini-PC or KVM-capable
+host gets the full feature set.
 
 ## Raspberry Pi 5 (pi-gen)
 
@@ -47,8 +47,8 @@ installs `git` + clones the repo + runs
 `APPLIANCE_KASMVNC_VERSION` pinned, and a firstboot script that
 prints the manual steps. Sizing and encoder caveats:
 
-- 16 GB Pi 5 recommended; bwrap backend is the practical choice for
-  multi-member (KVM guests are RAM-hungry).
+- 16 GB Pi 5 recommended; note the Cowork VM needs KVM (Pi 5 has it)
+  and KVM guests are RAM-hungry — budget accordingly for multi-member.
 - The Pi 5 has **no H.264 hardware encoder** — kasmVNC (JPEG/WebP
   regions) performs well; don't plan on Sunshine/Moonlight there.
 - Use an NVMe HAT or USB3 SSD; Cowork sessions are I/O-heavy on

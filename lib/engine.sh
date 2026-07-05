@@ -8,12 +8,16 @@
 #              squarely within the app's terms. Cowork's VM feature
 #              needs /dev/kvm; without it the rest of the app still
 #              works and setup says so plainly.
-#   repo     — the community claude-desktop-debian repackaging (bwrap
-#              Cowork backend for KVM-less hosts). EXPLICIT OPT-IN
-#              ONLY (--engine repo): it rewrites Anthropic's minified
-#              app, which is a different terms posture the operator
-#              must choose knowingly. auto never selects it on a
-#              Debian-family host.
+#   repo     — the community claude-desktop-debian packaging. As of
+#              its v3.0.0 it repackages Anthropic's OFFICIAL Linux
+#              .deb (app.asar byte-identical); what it adds is the
+#              hardened launcher (config-wipe backup rotation, GPU
+#              recovery), its own doctor, and rpm/AppImage/Nix
+#              formats. Its former bwrap Cowork backend is parked —
+#              BOTH engines need /dev/kvm for the Cowork VM now.
+#              Still explicit opt-in on Debian (unofficial packaging
+#              is a choice); the automatic fallback on non-Debian
+#              distros where no official build exists.
 #
 # Sourced by appliance/setup.sh. Sets globals:
 #   engine_choice   official|repo
@@ -39,9 +43,10 @@ select_engine() {
 			engine_choice='repo'
 			engine_reason='forced via --engine (community build)'
 			log_warn 'engine repo is the community' \
-				'claude-desktop-debian repackaging, which patches' \
-				"Anthropic's app. You are opting into that terms" \
-				'posture explicitly.'
+				'claude-desktop-debian packaging (official app' \
+				'bytes + a hardened launcher). Unofficial — you' \
+				'are opting into that knowingly. Note: it no' \
+				'longer provides Cowork without /dev/kvm.'
 			return 0
 			;;
 		auto) ;;
@@ -78,8 +83,22 @@ select_engine() {
 		engine_reason='official build; no /dev/kvm so the Cowork VM'
 		engine_reason+=' feature is unavailable'
 		log_warn 'no /dev/kvm: Claude Desktop will run but Cowork'"'"'s' \
-			'VM feature will not. To trade the official binary for' \
-			'bwrap-backed Cowork, opt in explicitly with --engine repo.'
+			'VM feature will not (every engine needs KVM for it).' \
+			'Use a KVM-capable host for the full feature set.'
+	fi
+}
+
+# Name of the installed Claude Desktop launcher. The official package
+# ships /usr/bin/claude-desktop; the community v3 package ships
+# /usr/bin/claude-desktop-unofficial (they can coexist). Falls back to
+# the official name when neither is installed yet (dry-run, tests).
+claude_desktop_binary() {
+	if command -v claude-desktop > /dev/null 2>&1; then
+		printf 'claude-desktop'
+	elif command -v claude-desktop-unofficial > /dev/null 2>&1; then
+		printf 'claude-desktop-unofficial'
+	else
+		printf 'claude-desktop'
 	fi
 }
 
@@ -122,14 +141,13 @@ _engine_install_repo() {
 		"$keyring" "$base_url" \
 		| appliance_force=1 write_file "$list" || return 1
 	run_cmd apt-get update || return 1
-	pkg_install claude-desktop
+	# v3 renamed the package (claude-desktop is now a transitional
+	# dummy in their pool); try the real name first.
+	pkg_install claude-desktop-unofficial || pkg_install claude-desktop
 }
 
 # Install the selected engine and record the decision for the doctor.
-# $1 = target user (for the per-session backend override).
 install_engine() {
-	local user="$1"
-
 	case "$engine_choice" in
 		official) _engine_install_official || return 1 ;;
 		repo)     _engine_install_repo || return 1 ;;
@@ -139,17 +157,15 @@ install_engine() {
 			;;
 	esac
 
-	# Cowork backend actually available on this host:
-	#   kvm    — /dev/kvm present (either engine)
-	#   bwrap  — repo engine substituting bwrap for the missing KVM
-	#   none   — official engine without KVM: the app runs, the Cowork
-	#            VM feature does not (recorded so the doctor can say so)
+	# Cowork backend actually available on this host. Since the
+	# community build's v3 parked its bwrap backend, BOTH engines are
+	# KVM-or-nothing:
+	#   kvm    — /dev/kvm present
+	#   none   — the app runs, the Cowork VM feature does not
+	#            (recorded so the doctor can say so)
 	local backend
 	if [[ -e ${APPLIANCE_DEV_KVM:-/dev/kvm} ]]; then
 		backend='kvm'
-	elif [[ $engine_choice == 'repo' ]]; then
-		backend='bwrap'
-		_engine_write_backend_env "$user" || return 1
 	else
 		backend='none'
 	fi
@@ -161,24 +177,3 @@ install_engine() {
 	} | appliance_force=1 write_file "$appliance_etc/engine.conf"
 }
 
-# Persist COWORK_VM_BACKEND=bwrap into the user's systemd environment
-# so every session (kasmVNC, xrdp, console) inherits it.
-_engine_write_backend_env() {
-	local user="$1"
-	local home
-	home=$(user_home "$user") || return 1
-	local env_dir="$home/.config/environment.d"
-	local env_file="$env_dir/60-coworkstation.conf"
-
-	run_as_user "$user" mkdir -p "$env_dir" || return 1
-	if [[ -e $env_file && ${appliance_force:-0} -ne 1 ]]; then
-		log_info "keeping existing $env_file"
-		return 0
-	fi
-	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
-		printf 'DRY-RUN: write %s (COWORK_VM_BACKEND=bwrap)\n' "$env_file"
-		return 0
-	fi
-	printf 'COWORK_VM_BACKEND=bwrap\n' > "$env_file" || return 1
-	chown "$user:$user" "$env_file"
-}

@@ -7,8 +7,9 @@
 #
 #   cws setup [flags]             provision (or re-run) this box
 #   cws doctor [--user NAME]      health checks
+#   cws client [setup|id|add-device|status]  pair devices (file sync)
 #   cws member add|remove|list    manage members
-#   cws storage add|remove|list   cloud-drive mounts (rclone)
+#   cws storage add|remove|list   optional cloud-drive mounts (rclone)
 #   cws ssh-config [flags]        managed-settings sshConfigs JSON
 #   cws credentials [NAME]        show a user's kasmVNC sign-in
 #   cws update                    update the installed tree (git)
@@ -45,6 +46,55 @@ ask() {
 	fi
 	read -r reply
 	printf '%s' "${reply:-$default}"
+}
+
+# `cws client` — pairing and health for the default file-sync path.
+# Lazily sources the plumbing so plain dispatch stays dependency-free.
+cmd_client() {
+	# shellcheck source=lib/common.sh
+	source "$cws_dir/lib/common.sh"
+	# shellcheck source=lib/clientsync.sh
+	source "$cws_dir/lib/clientsync.sh"
+	local sub="${1:-help}"
+	if [[ $# -gt 0 ]]; then
+		shift
+	fi
+	local user="${SUDO_USER:-cowork}"
+	if [[ ${1:-} == '--user' && -n ${2:-} ]]; then
+		user="$2"
+		shift 2
+	fi
+	case "$sub" in
+		setup)      clientsync_setup "$user" "${1:-1}" ;;
+		id)         clientsync_device_id "${1:-$user}" ;;
+		add-device) clientsync_add_device "$user" "${1:-}" "${2:-}" ;;
+		status)     clientsync_status "${1:-$user}" ;;
+		help|*)
+			printf 'cws client setup [--user U] [DISPLAY]\n'
+			printf 'cws client id [USER]        box device ID\n'
+			printf 'cws client add-device ID [LABEL]  pair a device\n'
+			printf 'cws client status [USER]\n'
+			;;
+	esac
+}
+
+menu_client_pair() {
+	local user="${SUDO_USER:-cowork}"
+	{
+		printf 'Pair a phone/tablet/laptop with ~/ClientSync:\n'
+		printf '  1. install Syncthing (Android/desktop) or Möbius\n'
+		printf '     Sync (iPhone/iPad) on the device\n'
+		printf '  2. in that app, add a remote device with this ID:\n'
+	} >&2
+	cmd_client id "$user" >&2 || return 1
+	local dev label
+	dev=$(ask "  3. paste the DEVICE'S own ID here" '')
+	if [[ -z $dev ]]; then
+		err 'no device ID given'
+		return 1
+	fi
+	label=$(ask '     a name for it' 'my-device')
+	cmd_client add-device "$dev" "$label"
 }
 
 cmd_version() {
@@ -144,7 +194,8 @@ menu() {
 			printf '  %s\n' "$(status_line)"
 			printf '  1) health check (doctor)\n'
 			printf '  2) show my kasmVNC sign-in credentials\n'
-			printf '  3) add a cloud drive (Google Drive/OneDrive/Dropbox)\n'
+			printf '  3) pair a device — file sync (the default)\n'
+			printf '  d) add an optional cloud drive (GDrive/OneDrive/Dropbox)\n'
 			printf '  4) add a member (read the terms note first)\n'
 			printf '  5) list members\n'
 			printf '  6) generate SSH-target config for Claude Desktop\n'
@@ -157,7 +208,8 @@ menu() {
 		case "$choice" in
 			1) "$cws_dir/setup.sh" doctor ;;
 			2) cmd_credentials ;;
-			3) menu_storage_add ;;
+			3) menu_client_pair ;;
+			d|D) menu_storage_add ;;
 			4) menu_member_add ;;
 			5) "$cws_dir/member.sh" list ;;
 			6) menu_ssh_config ;;
@@ -179,6 +231,7 @@ main() {
 		doctor)      exec "$cws_dir/setup.sh" doctor "$@" ;;
 		member)      exec "$cws_dir/member.sh" "$@" ;;
 		storage)     exec "$cws_dir/storage.sh" "$@" ;;
+		client)      cmd_client "$@" ;;
 		ssh-config)  exec "$cws_dir/gen-sshconfigs.sh" "$@" ;;
 		testbench)   exec "$cws_dir/testbench/setup.sh" "$@" ;;
 		credentials) cmd_credentials "$@" ;;

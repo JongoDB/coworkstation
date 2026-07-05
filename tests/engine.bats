@@ -76,7 +76,7 @@ teardown() {
 		printf "choice=%s\n" "$engine_choice"
 	' 2>&1
 	[[ $output == *'choice=official'* ]]
-	[[ $output == *'--engine repo'* ]]
+	[[ $output == *'KVM'* ]]
 	select_engine auto
 	[[ $engine_choice == 'official' ]]
 	[[ $engine_reason == *'Cowork VM'* ]]
@@ -107,28 +107,36 @@ teardown() {
 	APPLIANCE_DEV_KVM="$TEST_TMP/kvm"
 	_engine_install_official() { return 0; }
 	select_engine auto
-	install_engine alice
+	install_engine
 	[[ -f $APPLIANCE_ETC/engine.conf ]]
 	grep -q '^engine=official$' "$APPLIANCE_ETC/engine.conf"
 	grep -q '^backend=kvm$' "$APPLIANCE_ETC/engine.conf"
 }
 
-@test "install_engine: explicit repo without kvm records bwrap + env" {
+@test "install_engine: repo without kvm records backend=none (v3: no bwrap)" {
+	# Upstream v3 parked the bwrap Cowork backend, so the repo engine is
+	# KVM-or-nothing exactly like the official one — and no
+	# COWORK_VM_BACKEND env drop-in may be written.
 	write_os_release ubuntu noble
 	APPLIANCE_DEV_KVM="$TEST_TMP/no-such-kvm"
 	_engine_install_repo() { return 0; }
-	user_home() { printf '%s' "$TEST_TMP/home"; }
-	run_as_user() { shift; "$@"; }
-	mkdir -p "$TEST_TMP/home"
-	chown() { return 0; }
 	select_engine repo
-	install_engine alice
-	grep -q '^backend=bwrap$' "$APPLIANCE_ETC/engine.conf"
-	local env_file
-	env_file="$TEST_TMP/home/.config/environment.d"
-	env_file+='/60-coworkstation.conf'
-	[[ -f $env_file ]]
-	grep -q '^COWORK_VM_BACKEND=bwrap$' "$env_file"
+	install_engine
+	grep -q '^backend=none$' "$APPLIANCE_ETC/engine.conf"
+	[[ ! -e $TEST_TMP/home/.config/environment.d/60-coworkstation.conf ]]
+}
+
+@test "claude_desktop_binary: prefers official, falls back to unofficial" {
+	command() {
+		if [[ $1 == '-v' && $2 == 'claude-desktop' ]]; then return 1; fi
+		if [[ $1 == '-v' && $2 == 'claude-desktop-unofficial' ]]; then
+			return 0
+		fi
+		builtin command "$@"
+	}
+	[[ $(claude_desktop_binary) == 'claude-desktop-unofficial' ]]
+	command() { return 1; }
+	[[ $(claude_desktop_binary) == 'claude-desktop' ]]
 }
 
 @test "install_engine: official without kvm records backend=none" {
@@ -136,7 +144,7 @@ teardown() {
 	APPLIANCE_DEV_KVM="$TEST_TMP/no-such-kvm"
 	_engine_install_official() { return 0; }
 	select_engine auto
-	install_engine alice
+	install_engine
 	grep -q '^engine=official$' "$APPLIANCE_ETC/engine.conf"
 	grep -q '^backend=none$' "$APPLIANCE_ETC/engine.conf"
 	# no bwrap env written for the official engine
@@ -150,7 +158,7 @@ teardown() {
 	_engine_install_official() { return 0; }
 	_engine_install_repo() { return 0; }
 	select_engine auto
-	install_engine alice
+	install_engine
 	grep -q '^engine=official$' "$APPLIANCE_ETC/engine.conf"
 	# Second run with a forced repo engine must overwrite the record
 	user_home() { printf '%s' "$TEST_TMP/home"; }
@@ -158,19 +166,19 @@ teardown() {
 	mkdir -p "$TEST_TMP/home"
 	chown() { return 0; }
 	select_engine repo
-	install_engine alice
+	install_engine
 	grep -q '^engine=repo$' "$APPLIANCE_ETC/engine.conf"
 }
 
 @test "install_engine: fails cleanly before select_engine" {
 	engine_choice=''
-	run install_engine alice
+	run install_engine
 	[[ $status -ne 0 ]]
 }
 
 @test "install_engine: propagates installer failure" {
 	select_engine official
 	_engine_install_official() { return 1; }
-	run install_engine alice
+	run install_engine
 	[[ $status -ne 0 ]]
 }

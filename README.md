@@ -27,7 +27,7 @@ flowchart LR
             fs["Real filesystem<br/>Code tab, projects, git"]
             mcp["Your local MCP servers<br/>running 24/7"]
         end
-        drive["Cloud drive mount<br/>Google Drive / OneDrive / Dropbox<br/>(bounded local cache)"]
+        drive["ClientSync (default)<br/>your device's folder ⇄ this box<br/>+ optional cloud-drive mounts"]
         cowork["Cowork VM (KVM)<br/>where /dev/kvm exists"]
         doctor["cws doctor<br/>fails loudly on any exposure"]
     end
@@ -49,6 +49,7 @@ What each piece buys you that you can't get otherwise:
 |---|---|
 | claude.ai on a tablet: chat only — no filesystem, no local MCP, the session dies with the tab | The full desktop app on your hardware, from that same tablet |
 | Local MCP servers live and die with your laptop's lid | MCP servers run 24/7 next to Claude's session |
+| Getting a file from the device in your hand to Claude = email-yourself gymnastics | **ClientSync (default):** the folder on your phone/tablet/laptop IS `~/ClientSync` on the box — Cowork and the Code tab use it directly |
 | Long agentic runs stop when you disconnect | Sessions persist across disconnects **and reboots** (live-validated) |
 | Code tab needs the desktop app on a machine you're carrying | Code tab runs on the always-on box; SSH-target mode also drops it into any desktop app you own |
 | DIY = hand-rolling tunnel + SSO + VNC + user isolation + certs + updates, and *knowing* it's safe | One command; `cws doctor` verifies every claim — loopback binds, live listeners, an Access policy on **every** hostname |
@@ -114,7 +115,22 @@ Coworkstation discovers your account id **from the zone**, so the token does not
 ## Engines
 
 - **`official` (the default, always).** Anthropic's own apt build, unmodified — the only engine squarely within the app's terms, and the one the project stands behind. Without `/dev/kvm` the Cowork VM feature is unavailable and setup + doctor say so; nothing else is affected.
-- **`repo` (explicit opt-in only, `--engine repo`).** The community [`claude-desktop-debian`](https://github.com/aaddrick/claude-desktop-debian) repackaging, which patches the app to back Cowork with bwrap on KVM-less hosts. `auto` never selects it on a Debian-family host — choosing a modified binary is a terms posture you must pick knowingly. It is also the automatic fallback on non-Debian distros, where no official build exists.
+- **`repo` (explicit opt-in, `--engine repo`).** The community [`claude-desktop-debian`](https://github.com/aaddrick/claude-desktop-debian) packaging. Since its v3.0.0 it repackages **Anthropic's official Linux `.deb`** — the app.asar ships byte-identical — adding a hardened launcher (config-wipe backup rotation, GPU/session recovery), its own doctor, and rpm/AppImage/Nix formats. Its former bwrap Cowork backend is parked upstream, so **both engines need `/dev/kvm` for the Cowork VM**. Still unofficial packaging (a knowing choice on Debian); the automatic fallback on non-Debian distros, where no official build exists.
+
+## Your files
+
+**Default: ClientSync.** Setup gives every user a Syncthing instance and `~/ClientSync`. Pair the device in your hand once — explicit consent on **both** ends, only the picked folder ever syncs:
+
+```bash
+sudo cws client id                # the box's device ID
+sudo cws client add-device <THEIR-ID> ipad   # then accept on the device
+```
+
+Client apps: [Syncthing](https://syncthing.net) (Android/desktop), [Möbius Sync](https://www.mobiussync.com) (iPhone/iPad). The synced folder is a plain directory on the box, so Cowork folder mounts and the Code tab use it with nothing extra. Single files also move via kasmVNC's built-in upload/download in the session toolbar.
+
+**Optional: cloud-drive mounts.** `cws storage add --provider gdrive|onedrive|dropbox` mounts a member's cloud drive at `~/CloudDrives/<name>` with a bounded local cache — useful when a Drive folder is already the team's source of truth.
+
+**Proposed next (loud-consent, not yet built):** a browser bridge behind the same Access gate — desktop-browser folder share and per-session client **screen share** exposed to Claude via MCP. See [design.md](docs/design.md#client-bridge--proposed--not-yet-built).
 
 ## What you get
 
@@ -193,5 +209,5 @@ The BATS suite validates script logic and dry-run plans, not Claude Desktop itse
 
 Coworkstation's own scripts are **MIT** (see [LICENSE](LICENSE)). That covers this orchestrator only — **not** the Claude Desktop application it installs, which is Anthropic's proprietary software under [Anthropic's Consumer Terms](https://www.anthropic.com/legal/consumer-terms).
 
-- The **default engine is Anthropic's official, unmodified package.** The community `repo` engine (a repackaging that patches the app) is available only by explicit `--engine repo` opt-in, and choosing it is your call to make against Anthropic's terms.
+- The **default engine is Anthropic's official, unmodified package.** The community `repo` engine — since its v3.0.0 a packaging of the official `.deb` with a hardened launcher (app bytes unmodified) — is available by explicit `--engine repo` opt-in; it remains unofficial packaging and choosing it is your call.
 - **Per-user accounts, always.** One person per Claude sign-in. This project is not affiliated with, endorsed by, or supported by Anthropic; running headless/multi-user deployments carries account-standing risk that is yours to accept.

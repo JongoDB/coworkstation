@@ -47,9 +47,11 @@ apl_check_engine_conf() {
 
 apl_check_engine_installed() {
 	if command -v claude-desktop > /dev/null 2>&1; then
-		_apl_pass 'claude-desktop on PATH'
+		_apl_pass 'claude-desktop on PATH (official)'
+	elif command -v claude-desktop-unofficial > /dev/null 2>&1; then
+		_apl_pass 'claude-desktop-unofficial on PATH (community v3)'
 	else
-		_apl_fail 'claude-desktop not installed'
+		_apl_fail 'no Claude Desktop launcher installed'
 	fi
 }
 

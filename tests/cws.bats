@@ -64,7 +64,8 @@ teardown() {
 	run bash -c "printf 'q\n' | APPLIANCE_ASSUME_TTY=1 bash '$CWS' 2>&1"
 	[[ $status -eq 0 ]]
 	[[ $output == *'Coworkstation'* ]]
-	[[ $output == *'add a cloud drive'* ]]
+	[[ $output == *'pair a device'* ]]
+	[[ $output == *'optional cloud drive'* ]]
 	[[ $output == *'engine: not installed'* ]]
 }
 

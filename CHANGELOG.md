@@ -7,6 +7,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **ClientSync — device↔box file sync is now the default, out of the
+  box.** Every user gets a Syncthing instance and `~/ClientSync` at
+  setup (and per member at `member.sh add`); `cws client
+  add-device <ID>` pairs a phone/tablet/laptop (Möbius Sync on iOS,
+  Syncthing elsewhere), with explicit consent on both ends and only
+  the picked folder syncing. The synced folder is a plain directory,
+  so Cowork mounts and the Code tab consume it directly. Cloud-drive
+  mounts remain as the optional `cws storage add`. Interactive pairing
+  lives in the `cws` menu ("pair a device").
+
 - **`cws` — the Coworkstation CLI.** One command in front of the tools:
   run bare on a terminal for an interactive menu (doctor, credentials,
   add a cloud drive, add/list members, SSH-target config, re-run setup,
@@ -22,6 +32,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Aligned with claude-desktop-debian v3.0.0** (released upstream on
+  2026-07-04): the community build now repackages Anthropic's official
+  Linux `.deb` with the app bytes unmodified, renamed
+  `claude-desktop-unofficial`, and its bwrap Cowork backend is parked —
+  so the `repo` engine installs the new package name (with a
+  transitional fallback), `COWORK_VM_BACKEND=bwrap` is no longer
+  written (both engines are KVM-or-nothing for the Cowork VM,
+  `backend=kvm|none`), the doctor accepts either launcher binary, the
+  autostart entry targets whichever launcher is installed, and every
+  "bwrap Cowork" claim in the docs is corrected. The repo engine's
+  terms posture softens accordingly (packaging wrapper, not a patched
+  app) and its remaining value is the hardened launcher, doctor, and
+  rpm/AppImage/Nix formats.
 - Post-install next-steps, README, and runbook speak `cws` first;
   README Status explicitly marks arm64 as untested (code path only).
 

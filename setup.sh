@@ -35,6 +35,8 @@ source "$cws_dir/lib/engine.sh"
 source "$cws_dir/lib/doctor.sh"
 # shellcheck source=lib/tunnel-api.sh
 source "$cws_dir/lib/tunnel-api.sh"
+# shellcheck source=lib/clientsync.sh
+source "$cws_dir/lib/clientsync.sh"
 # shellcheck source=lib/profiles/kasmvnc.sh
 source "$cws_dir/lib/profiles/kasmvnc.sh"
 # shellcheck source=lib/profiles/xrdp.sh
@@ -138,11 +140,11 @@ install_autostart() {
 }
 
 autostart_entry() {
-	cat << 'EOF'
+	cat << EOF
 [Desktop Entry]
 Type=Application
 Name=Claude
-Exec=claude-desktop
+Exec=$(claude_desktop_binary)
 X-GNOME-Autostart-enabled=true
 EOF
 }
@@ -261,7 +263,7 @@ main() {
 	install_base_deps || return 1
 	enable_unattended_upgrades || return 1
 	install_session_stack || return 1
-	install_engine "$user" || return 1
+	install_engine || return 1
 
 	# Record the deployment shape for member.sh and the doctor.
 	{
@@ -290,6 +292,13 @@ main() {
 	# Put the cws CLI on PATH so post-install management is one command.
 	run_cmd ln -sf "$cws_dir/cws" /usr/local/bin/cws || return 1
 
+	# Client sync is the DEFAULT file path onto the box (the folder on
+	# your device IS ~/ClientSync here). Non-fatal: a failure must not
+	# sink provisioning — it is re-runnable via cws.
+	clientsync_setup "$user" 1 \
+		|| log_warn 'client sync setup failed (non-fatal); re-run' \
+			'later with: sudo cws client setup'
+
 	log_info 'provisioning complete. Next steps:'
 	if [[ $profile == 'kasmvnc' ]]; then
 		local home
@@ -307,8 +316,10 @@ main() {
 		log_info '  - finish the cloudflared tunnel steps printed above'
 	fi
 	log_info 'manage this box any time with the interactive CLI:'
-	log_info '  sudo cws            # menu: storage, members, doctor,'
-	log_info '                      # credentials, SSH-target, update'
+	log_info '  sudo cws            # menu: pair your devices, doctor,'
+	log_info '                      # credentials, members, SSH-target'
+	log_info "  sudo cws client add-device <ID>   # pair phone/tablet:"
+	log_info '                      # their folder <-> ~/ClientSync here'
 	log_info '  sudo cws storage add --user NAME --provider gdrive ...'
 	log_info '  sudo cws member add NAME     (read the terms note first)'
 	log_info '  cws help            # everything else'

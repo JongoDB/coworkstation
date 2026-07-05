@@ -67,7 +67,7 @@ The appliance supports two interchangeable engines behind one provisioning inter
 Selection rule, encoded in the provisioning script:
 
 1. Debian-family → **official build, always** (with or without `/dev/kvm`). Without KVM the Cowork VM feature is unavailable and both setup and the doctor say so plainly; nothing else is affected. `auto` never trades the unmodified first-party binary for a feature.
-2. `--engine repo` (explicit opt-in only) → **repo build with `COWORK_VM_BACKEND=bwrap`** on KVM-less hosts. Bubblewrap is the portability play: namespace isolation with zero virtualization requirements, plus the `coworkBwrapMounts` config surface. The repo build patches Anthropic's minified app — a different terms posture the operator must choose knowingly, which is why `auto` won't.
+2. `--engine repo` (explicit opt-in) → the community build. **As of claude-desktop-debian v3.0.0 this repackages Anthropic's official Linux `.deb`** (app.asar byte-identical; the old Windows-repack and its bwrap Cowork patch are gone — bwrap is parked as a 3.1 investigation upstream). What it adds: hardened launcher (config-wipe backup rotation, GPU recovery, autostart healing), its own doctor, rpm/AppImage/Nix formats. Both engines are KVM-or-nothing for the Cowork VM now.
 3. Fedora/RHEL/Nix host → **repo build** as the automatic fallback (official is Debian-only today), with a warning.
 
 The doctor check (below) reports which rule fired and why, and records the resulting Cowork backend (`kvm`, `bwrap`, or `none`).
@@ -273,12 +273,13 @@ Make the *client device* a source and sensor for the remote Claude
 session, closing the loop the cloud-drive mount opens. Three tiers,
 by what each platform can actually do:
 
-1. **Sync provider (`cws storage add --provider syncthing`)** — the
-   tablet-capable path. Continuous two-way folder sync between the
-   client device (Syncthing: Möbius Sync on iOS, native on Android /
-   desktop) and `~/ClientSync/<device>` on the box. Lands in the same
-   place as `CloudDrives/`, so Cowork mounts and the Code tab work on
-   client files with zero further integration.
+1. **SHIPPED (default out of the box): ClientSync** — every user
+   gets a Syncthing instance + `~/ClientSync` at setup;
+   `cws client add-device` pairs a phone/tablet/laptop (Möbius Sync on
+   iOS, Syncthing native elsewhere). Explicit consent on both ends;
+   only the picked folder syncs. Cowork mounts and the Code tab work
+   on client files with zero further integration. Cloud-drive mounts
+   (`cws storage add`) are the optional, user-configured alternative.
 2. **Browser bridge** — a small page served behind the SAME Access
    gate as the session: (a) folder share via the File System Access
    API (desktop Chrome/Edge; mobile browsers cannot pick directories),
