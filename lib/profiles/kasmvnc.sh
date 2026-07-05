@@ -147,6 +147,16 @@ EOF
 kasmvnc_xstartup() {
 	cat << 'EOF'
 #!/bin/sh
+# Extra sessions (displays :50 and up, see lib/session.sh) get their
+# own config home so a second Claude Desktop runs beside the first —
+# the singleton lock is per config dir — with its own sign-in.
+dnum=${DISPLAY#:}
+dnum=${dnum%%.*}
+if [ "$dnum" -ge 50 ] 2> /dev/null; then
+	XDG_CONFIG_HOME="$HOME/.config/cws-sessions/$dnum"
+	export XDG_CONFIG_HOME
+	mkdir -p "$XDG_CONFIG_HOME"
+fi
 exec startxfce4
 EOF
 }

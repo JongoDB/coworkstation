@@ -193,6 +193,19 @@ dropdown; sessions run on the appliance with connectors, plugins, and
 MCP intact. Tailscale SSH or ordinary keys both work — the entry is
 plain `user@host`.
 
+## Extra sessions (one member, several devices)
+
+```bash
+sudo cws session add alice --allow alice@corp.com
+# -> https://alice-s50.<hostname>  (own Access policy, own sign-in)
+sudo cws session list
+sudo cws session remove alice 50   # config home is kept
+```
+
+Each extra session runs its own Claude Desktop under its own config
+home (`~/.config/cws-sessions/N`) — sign in once per session; the
+singleton lock never fights across devices.
+
 ## Idle reclaim (optional)
 
 Stop desktops nobody is using — both signals must be cold: no

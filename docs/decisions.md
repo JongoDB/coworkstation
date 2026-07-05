@@ -6,6 +6,37 @@ Evidence citations reference the dated reports in
 [`research/`](research/) (pass 1 findings F0-F7, pass 2 findings
 P2-F0..P2-F9).
 
+## ADR-010: Concurrent per-device sessions via display range + per-session config home
+
+- **Status:** accepted, 2026-07-05 (completes ADR-008 phase 3)
+- **Context:** "new client device = new session" needs a member to
+  run several desktops at once. Three constraints shaped the design:
+  (a) kasmVNC's per-user `~/.vnc/kasmvnc.yaml` carries ONE websocket
+  port, (b) cloudflared ingress does no path rewriting, so each
+  session needs its own hostname, and (c) Claude Desktop's
+  SingletonLock is per config dir, so two instances per user need
+  separate `XDG_CONFIG_HOME`s.
+- **Decision:** `cws session add USER [--allow EMAIL]` provisions an
+  extra session on the next display in the **:50+ range** (member
+  primaries allocate from :2, so no collision), with its own unit
+  (`kasmvnc-sN.service`, `-websocketPort` overriding the shared
+  yaml), its own hostname `USER-sN.<base>` + DNS + Access policy
+  (reusing the member-add plumbing, `--allow` scopes it), and a row
+  in `sessions.tsv`. The shared xstartup branches on display number:
+  **:50+ sessions get `XDG_CONFIG_HOME=~/.config/cws-sessions/N`**,
+  so each runs its own Claude Desktop with its own sign-in — which
+  is the point, not a bug: one person, one subscription, N devices,
+  each session's login stored separately. `cws session remove`
+  reverses everything but deliberately keeps the session's config
+  home (data outlives sessions). Reclaim/audit apply: extra units
+  are user units like any other.
+- **Trade-off stated:** per-session config home means per-session
+  XFCE settings and keyring too — full isolation, at the cost of
+  re-customizing per session. Accepted: isolation is what device
+  binding means.
+- **Revisit when:** upstream Claude Desktop offers multi-instance
+  per config dir, or members want shared-config sessions.
+
 ## ADR-009: Encrypted backup by wrapping restic, restore stays a restic command
 
 - **Status:** accepted, 2026-07-05

@@ -15,6 +15,7 @@
 #   cws devices                   devices seen per member (bridge registry)
 #   cws reclaim [--dry-run]       stop idle sessions (opt-in; homes persist)
 #   cws backup setup|run|list     encrypted backups of session homes (restic)
+#   cws session add|remove|list   extra per-device sessions for a member
 #   cws storage add|remove|list   optional cloud-drive mounts (rclone)
 #   cws ssh-config [flags]        managed-settings sshConfigs JSON
 #   cws credentials [NAME]        show a user's kasmVNC sign-in
@@ -35,7 +36,7 @@ info() { printf '[cws] %s\n' "$*"; }
 err()  { printf '[cws] ERROR: %s\n' "$*" >&2; }
 
 usage() {
-	sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Same TTY seam as the setup wizard (APPLIANCE_ASSUME_TTY=1 for tests).
@@ -156,6 +157,28 @@ cmd_fleet() {
 			else
 				fleet_reclaim
 			fi
+			;;
+		session)
+			# shellcheck source=lib/session.sh
+			source "$cws_dir/lib/session.sh"
+			local ssub="${1:-list}"
+			if [[ $# -gt 0 ]]; then shift; fi
+			case "$ssub" in
+				add)
+					local sallow=''
+					if [[ ${2:-} == '--allow' && -n ${3:-} ]]; then
+						sallow="$3"
+					fi
+					session_add "${1:-}" "$sallow"
+					;;
+				remove) session_remove "${1:-}" "${2:-}" ;;
+				list)   session_list | column -t -s $'\t' ;;
+				*)
+					printf 'cws session add USER [--allow EMAIL]\n'
+					printf 'cws session remove USER DISPLAY\n'
+					printf 'cws session list\n'
+					;;
+			esac
 			;;
 		backup)
 			# shellcheck source=lib/backup.sh
@@ -325,6 +348,7 @@ main() {
 		devices)     cmd_fleet devices ;;
 		reclaim)     cmd_fleet reclaim "$@" ;;
 		backup)      cmd_fleet backup "$@" ;;
+		session)     cmd_fleet session "$@" ;;
 		ssh-config)  exec "$cws_dir/gen-sshconfigs.sh" "$@" ;;
 		testbench)   exec "$cws_dir/testbench/setup.sh" "$@" ;;
 		credentials) cmd_credentials "$@" ;;

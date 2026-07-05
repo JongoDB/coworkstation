@@ -7,6 +7,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Concurrent per-device sessions (MDM phase 3c, ADR-010).**
+  `cws session add USER [--allow EMAIL]` provisions an extra desktop
+  on the :50+ display range with its own unit, port, hostname
+  (`USER-sN.<base>`), DNS + Access policy, and — via an xstartup
+  branch — its own `XDG_CONFIG_HOME`, so a second Claude Desktop runs
+  beside the first with its own sign-in (the singleton lock is per
+  config dir). `cws session remove` reverses it (config home kept);
+  `cws session list` shows the registry.
+
 - **Reclaim policy + scheduling (3b tail).** Per-member idle windows
   (`idle_hours.NAME=N` overrides the global), a DORMANT state in
   `cws sessions` for stopped sessions idle past `dormant_days`
