@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Decision records + moat research.** `docs/decisions.md` (ADR format:
+  engine posture, kasmVNC vs Selkies, client-bridge direction, why no
+  bwrap Cowork backend, zero-trust roadmap, MCP-moat caveat) and
+  `docs/research/2026-07-05-moat-research.md` — the full
+  adversarially-verified deep-research report the ADRs cite, including
+  refuted claims and coverage gaps.
+
 - **Client bridge — the box now feels native to whatever device
   connects.** `cws-launch` guardian wraps the launcher and rotates
   config backups (config-wipe recovery; idea credit

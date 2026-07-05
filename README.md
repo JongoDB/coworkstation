@@ -199,6 +199,8 @@ Open `https://<hostname>`, pass the Access login, enter the kasmVNC credentials,
 - [`docs/design.md`](docs/design.md) — architecture, positioning & risk, access model, multi-tenancy
 - [`docs/phases.md`](docs/phases.md) — component specs, acceptance criteria, test environments, sizing
 - [`docs/runbook.md`](docs/runbook.md) — provision, members, edge, storage, backup, troubleshooting
+- [`docs/decisions.md`](docs/decisions.md) — ADRs: engine posture, session layer, client bridge, no-bwrap
+- [`docs/research/`](docs/research/) — dated deep-research reports the decisions cite
 
 ## Layout
 
