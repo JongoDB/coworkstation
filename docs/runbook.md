@@ -47,6 +47,8 @@ is the truth, and corrections are welcome):
 | DigitalOcean droplets | **unsupported** | officially "not a planned or supported feature"; `/dev/kvm` sometimes appears but is undocumented and slow — don't build on it |
 | Linode/Akamai, Vultr cloud compute | **no** (reported) | community-reported as unavailable; run the one-liner to confirm |
 
+Live price check with $/member math:
+[`research/2026-07-05-hosting-prices.md`](research/2026-07-05-hosting-prices.md).
 If Cowork-in-a-VM matters to you, the sweet spot is a mini-PC at home
 (N100-class boxes run the whole stack) or a cheap dedicated/auction
 server; among hourly clouds, GCP with the nested flag is the easiest
@@ -213,12 +215,20 @@ is healthy again if clientless-only is your policy.
 
 ## Backup and restore
 
-Back up:
+Encrypted, incremental, one command (restic under the hood; the key
+never leaves the box unless you copy it — DO copy it somewhere safe):
+
+```bash
+sudo cws backup setup /backup/cws     # or sftp:..., rclone:gdrive:cws
+sudo cws backup run                   # all session homes; cron-able
+sudo cws backup list
+sudo cws backup restic restore latest --target /tmp/restore
+```
+
+Also back up (small, config-only):
 
 - `/etc/coworkstation/` (engine.conf, appliance.conf, members.tsv)
 - `/etc/cloudflared/` (tunnel config + credentials)
-- member homes (`/home/*`) — contains Claude config, MCP configs,
-  keyrings
 - your Cloudflare Access policies (export or IaC)
 
 Do **not** back up: `~/.config/Claude/vm_bundles/` (re-downloaded;

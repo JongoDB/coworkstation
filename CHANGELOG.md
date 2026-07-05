@@ -7,6 +7,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Encrypted backup (ADR-009).** `cws backup setup|run|list` wraps
+  restic: client-side encrypted snapshots of every session home
+  (cache excludes, `coworkstation` tag) to any restic target
+  including rclone remotes; 0600 key in `/etc/coworkstation`, loud
+  copy-the-key warning, runs recorded in the ops log, raw
+  passthrough via `cws backup restic ...`. Live hosting price check
+  (`docs/research/2026-07-05-hosting-prices.md`): OVH SYS-1 verified
+  at $33.20/mo (~$6-8/member), GCP nested-virt machine-series
+  restrictions verified (no E2, Intel-only).
+
 - **Idle reclaim (MDM phase 3b, opt-in).** `cws reclaim [--dry-run]`
   stops sessions that are cold on BOTH signals — no established
   client connections and no bridge activity within `idle_hours`

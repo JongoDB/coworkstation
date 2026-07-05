@@ -6,6 +6,24 @@ Evidence citations reference the dated reports in
 [`research/`](research/) (pass 1 findings F0-F7, pass 2 findings
 P2-F0..P2-F9).
 
+## ADR-009: Encrypted backup by wrapping restic, restore stays a restic command
+
+- **Status:** accepted, 2026-07-05
+- **Context:** encrypted whole-workstation backup is the top
+  self-hoster expectation still missing (three research passes
+  flagged it; none needed to verify what restic already is: the
+  de-facto standard, client-side encrypted, deduplicating,
+  rclone-capable — reusing the rclone auth we already ship).
+- **Decision:** `cws backup setup|run|list` wraps restic with the
+  repo + 0600 key from `$APPLIANCE_ETC`; runs snapshot every session
+  home with cache excludes and land in the ops log. Restore is
+  deliberately NOT wrapped beyond a raw passthrough
+  (`cws backup restic ...`): a restore wrapper we got wrong is worse
+  than none. Setup warns loudly that losing the key loses the
+  backups.
+- **Revisit when:** users ask for scheduled retention policies
+  (restic forget/prune wrapping) or a guided restore drill.
+
 ## ADR-008: The product is an MDM/MAM-style multi-tenant management layer
 
 - **Status:** accepted (direction), 2026-07-05

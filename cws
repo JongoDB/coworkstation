@@ -14,6 +14,7 @@
 #   cws audit [DAYS]              Access logins + session events + ops log
 #   cws devices                   devices seen per member (bridge registry)
 #   cws reclaim [--dry-run]       stop idle sessions (opt-in; homes persist)
+#   cws backup setup|run|list     encrypted backups of session homes (restic)
 #   cws storage add|remove|list   optional cloud-drive mounts (rclone)
 #   cws ssh-config [flags]        managed-settings sshConfigs JSON
 #   cws credentials [NAME]        show a user's kasmVNC sign-in
@@ -34,7 +35,7 @@ info() { printf '[cws] %s\n' "$*"; }
 err()  { printf '[cws] ERROR: %s\n' "$*" >&2; }
 
 usage() {
-	sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Same TTY seam as the setup wizard (APPLIANCE_ASSUME_TTY=1 for tests).
@@ -155,6 +156,24 @@ cmd_fleet() {
 			else
 				fleet_reclaim
 			fi
+			;;
+		backup)
+			# shellcheck source=lib/backup.sh
+			source "$cws_dir/lib/backup.sh"
+			local bsub="${1:-help}"
+			if [[ $# -gt 0 ]]; then shift; fi
+			case "$bsub" in
+				setup)  backup_setup "${1:-}" ;;
+				run)    backup_run "$@" ;;
+				list)   backup_list ;;
+				restic) backup_restic "$@" ;;
+				*)
+					printf 'cws backup setup REPO   init + key\n'
+					printf 'cws backup run [USER..] snapshot homes\n'
+					printf 'cws backup list         show snapshots\n'
+					printf 'cws backup restic ...   raw restic on the repo\n'
+					;;
+			esac
 			;;
 	esac
 }
@@ -305,6 +324,7 @@ main() {
 		audit)       cmd_fleet audit "$@" ;;
 		devices)     cmd_fleet devices ;;
 		reclaim)     cmd_fleet reclaim "$@" ;;
+		backup)      cmd_fleet backup "$@" ;;
 		ssh-config)  exec "$cws_dir/gen-sshconfigs.sh" "$@" ;;
 		testbench)   exec "$cws_dir/testbench/setup.sh" "$@" ;;
 		credentials) cmd_credentials "$@" ;;
