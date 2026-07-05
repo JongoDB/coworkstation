@@ -10,10 +10,11 @@ Operational procedures for a running appliance: provision, members, edge, distri
 git clone https://github.com/jongodb/coworkstation
 sudo ./setup.sh
 
-# The three commands you will use after that:
-sudo ./member.sh add alice                      # add a member
-./setup.sh doctor                               # health check
-./gen-sshconfigs.sh --host claude.example.com --per-member
+# Day-2 management is the cws CLI (installed onto PATH by setup):
+sudo cws                                        # interactive menu
+sudo cws member add alice                       # add a member
+cws doctor                                      # health check
+cws ssh-config --host claude.example.com --per-member
 ```
 
 ## Initial provision

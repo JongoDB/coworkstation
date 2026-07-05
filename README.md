@@ -4,6 +4,58 @@ Your own **always-on Claude Desktop box** — a personal Linux workstation runni
 
 > **Not affiliated with Anthropic.** Coworkstation installs Anthropic's official Claude Desktop package and wires up access to it; by default it does not modify or redistribute the app. You are responsible for complying with [Anthropic's terms](https://www.anthropic.com/legal/consumer-terms) and your plan tier. See [License & terms](#license--terms).
 
+## What it unlocks
+
+Claude on the web is a chat window. Claude Desktop on *your* always-on hardware is a computer Claude works **at** — and Coworkstation is what makes that reachable from a tablet without carrying the machine:
+
+```mermaid
+flowchart LR
+    subgraph devices["Any browser — no client install"]
+        ipad["iPad / Android tablet"]
+        laptop["Any laptop"]
+        own["Your own Claude Desktop app<br/>(SSH-target mode)"]
+    end
+
+    subgraph edge["Cloudflare Zero Trust (your account)"]
+        access["Access — SSO / MFA<br/>the security boundary"]
+        tunnel["Tunnel — outbound only<br/>zero open inbound ports"]
+    end
+
+    subgraph box["Your Linux box — VPS or mini-PC (cws manages it)"]
+        subgraph session["Per-user session (loopback-only kasmVNC)"]
+            claude["Claude Desktop<br/>official Anthropic engine"]
+            fs["Real filesystem<br/>Code tab, projects, git"]
+            mcp["Your local MCP servers<br/>running 24/7"]
+        end
+        drive["Cloud drive mount<br/>Google Drive / OneDrive / Dropbox<br/>(bounded local cache)"]
+        cowork["Cowork VM (KVM)<br/>where /dev/kvm exists"]
+        doctor["cws doctor<br/>fails loudly on any exposure"]
+    end
+
+    ipad --> access
+    laptop --> access
+    access --> tunnel
+    tunnel --> session
+    own -. "ssh (Code tab)" .-> box
+    claude --- fs
+    claude --- mcp
+    fs --- drive
+    claude --- cowork
+```
+
+What each piece buys you that you can't get otherwise:
+
+| Without Coworkstation | With it |
+|---|---|
+| claude.ai on a tablet: chat only — no filesystem, no local MCP, the session dies with the tab | The full desktop app on your hardware, from that same tablet |
+| Local MCP servers live and die with your laptop's lid | MCP servers run 24/7 next to Claude's session |
+| Long agentic runs stop when you disconnect | Sessions persist across disconnects **and reboots** (live-validated) |
+| Code tab needs the desktop app on a machine you're carrying | Code tab runs on the always-on box; SSH-target mode also drops it into any desktop app you own |
+| DIY = hand-rolling tunnel + SSO + VNC + user isolation + certs + updates, and *knowing* it's safe | One command; `cws doctor` verifies every claim — loopback binds, live listeners, an Access policy on **every** hostname |
+| Exposed VNC/RDP port on the internet | Zero inbound ports; identity-aware SSO/MFA gate in front of everything |
+
+Day-2 management is one command: **`cws`** (interactive menu) or `cws storage add`, `cws member add`, `cws doctor`, `cws credentials`, `cws update`.
+
 ## Before you start
 
 Coworkstation provisions the box; it does not create these for you:
@@ -32,12 +84,20 @@ curl -fsSL https://raw.githubusercontent.com/jongodb/coworkstation/main/install.
 # 2b. Dev — clone and run. Run without flags in a terminal to get an
 #     interactive wizard that prompts for the hostname, token, and allow-list:
 git clone https://github.com/jongodb/coworkstation
-sudo coworkstation/setup.sh
+sudo coworkstation/cws setup
 ```
 
 The piped `curl | sudo bash` form is **non-interactive** (its stdin is the pipe) — pass the flags. Only the clone-and-run form in a terminal starts the wizard.
 
-That single command provisions the engine, a kasmVNC session, the Cloudflare tunnel + DNS + Access policy, and the connector. Full walkthrough: [`docs/runbook.md`](docs/runbook.md).
+That single command provisions the engine, a kasmVNC session, the Cloudflare tunnel + DNS + Access policy, and the connector — and puts **`cws`** on your PATH. From then on, everything is:
+
+```bash
+sudo cws          # interactive menu: doctor, credentials, cloud drives,
+                  # members, SSH-target config, update
+cws help          # the direct subcommands behind the menu
+```
+
+Full walkthrough: [`docs/runbook.md`](docs/runbook.md).
 
 ### Cloudflare token
 
@@ -60,12 +120,13 @@ Coworkstation discovers your account id **from the zone**, so the token does not
 
 | | |
 |---|---|
-| **Guided install** | `setup.sh` with an interactive wizard, or fully non-interactive flags for cloud-init |
+| **One CLI: `cws`** | interactive menu + subcommands for everything below — no script paths to remember |
+| **Guided install** | `cws setup` with an interactive wizard, or fully non-interactive flags for cloud-init |
 | **Zero-touch edge** | `--cf-api-token-file` provisions the Cloudflare tunnel, DNS, and Access policy via API — no `cloudflared tunnel login` |
-| **SSH-target mode** | `gen-sshconfigs.sh` makes the box appear in your own desktop app's environment picker for Code-tab work — often the best experience, no VNC needed |
+| **SSH-target mode** | `cws ssh-config` makes the box appear in your own desktop app's environment picker for Code-tab work — often the best experience, no VNC needed |
 | **Browser desktop** | a kasmVNC session behind Access when you need the full GUI (Cowork, the desktop app itself) |
 | **Remote storage** | `storage.sh` mounts Google Drive / OneDrive / Dropbox with a bounded cache, so the box stays small |
-| **Doctor** | `./setup.sh doctor` — verifies a live loopback listener, flags any session port bound beyond loopback, and **checks every tunnel hostname has an Access policy** |
+| **Doctor** | `cws doctor` — verifies a live loopback listener, flags any session port bound beyond loopback, and **checks every tunnel hostname has an Access policy** |
 
 ## Signing in
 
@@ -74,7 +135,7 @@ Two gates protect the session:
 1. **Cloudflare Access** (outer door) — your identity provider via the `--access-allow` list. This is the real security boundary; SSO, no separate password.
 2. **kasmVNC** (the desktop, behind Access) — a per-user login. `setup.sh` creates the control user (the Linux username, e.g. `cowork`) with a random password written to `~/.vnc/kasm-credentials` on the box (mode `0600`). The final "Next steps" output tells you the exact command to read it:
    ```bash
-   sudo cat /home/<user>/.vnc/kasm-credentials
+   sudo cws credentials <user>
    ```
 
 Open `https://<hostname>`, pass the Access login, enter the kasmVNC credentials, then sign into Claude Desktop inside the session. Your Claude sign-in populates the keyring on first use.
@@ -100,8 +161,9 @@ Open `https://<hostname>`, pass the Access login, enter the kasmVNC credentials,
 ## Layout
 
 ```
+cws                                                # THE user-facing CLI (menu + subcommands)
 install.sh                                         # network installer (curl | sudo bash)
-setup.sh member.sh storage.sh gen-sshconfigs.sh   # entry points
+setup.sh member.sh storage.sh gen-sshconfigs.sh   # plumbing cws dispatches to
 lib/            # common, engine selection, doctor, tunnel API, session profiles
 testbench/      # experimental computer-use-substitute MCP servers
 images/         # cloud-init + Pi notes

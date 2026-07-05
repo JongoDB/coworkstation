@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+#===============================================================================
+# cws — the Coworkstation CLI
+#
+# One command in front of the provisioning tools. Run bare on a
+# terminal for the interactive menu, or dispatch directly:
+#
+#   cws setup [flags]             provision (or re-run) this box
+#   cws doctor [--user NAME]      health checks
+#   cws member add|remove|list    manage members
+#   cws storage add|remove|list   cloud-drive mounts (rclone)
+#   cws ssh-config [flags]        managed-settings sshConfigs JSON
+#   cws credentials [NAME]        show a user's kasmVNC sign-in
+#   cws update                    update the installed tree (git)
+#   cws version | cws help
+#
+# cws is porcelain: the underlying scripts stay directly callable and
+# carry all the logic and tests. cws adds discoverability and the
+# interactive flow.
+#===============================================================================
+
+# Resolve through the /usr/local/bin symlink to the installed tree.
+cws_dir=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
+
+cws_etc="${APPLIANCE_ETC:-/etc/coworkstation}"
+
+info() { printf '[cws] %s\n' "$*"; }
+err()  { printf '[cws] ERROR: %s\n' "$*" >&2; }
+
+usage() {
+	sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
+# Same TTY seam as the setup wizard (APPLIANCE_ASSUME_TTY=1 for tests).
+is_tty() {
+	[[ ${APPLIANCE_ASSUME_TTY:-0} -eq 1 || -t 0 ]]
+}
+
+ask() {
+	local prompt="$1" default="${2:-}" reply
+	if [[ -n $default ]]; then
+		printf '%s [%s]: ' "$prompt" "$default" >&2
+	else
+		printf '%s: ' "$prompt" >&2
+	fi
+	read -r reply
+	printf '%s' "${reply:-$default}"
+}
+
+cmd_version() {
+	local v
+	v=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' \
+		"$cws_dir/CHANGELOG.md" 2> /dev/null | tr -d '#[] ')
+	printf 'cws %s\n' "${v:-unknown}"
+}
+
+cmd_update() {
+	if [[ ! -d $cws_dir/.git ]]; then
+		err "no git checkout at $cws_dir (tarball install);" \
+			're-run the installer to update'
+		return 1
+	fi
+	git -C "$cws_dir" pull --ff-only
+}
+
+# Show the kasmVNC sign-in for a user. Reading another user's file
+# needs root; say so instead of a bare permission error.
+cmd_credentials() {
+	local user="${1:-${SUDO_USER:-cowork}}"
+	local home
+	home=$(getent passwd "$user" | cut -d: -f6)
+	if [[ -z $home ]]; then
+		err "no such user '$user'"
+		return 1
+	fi
+	local f="$home/.vnc/kasm-credentials"
+	if [[ ! -e $f ]]; then
+		err "no kasmVNC credentials at $f (run setup first?)"
+		return 1
+	fi
+	if [[ ! -r $f ]]; then
+		err "cannot read $f — try: sudo cws credentials $user"
+		return 1
+	fi
+	cat "$f"
+}
+
+# One-line box summary for the menu header; every source is optional
+# so this works on a box that is not provisioned yet.
+status_line() {
+	local eng='' host='' members='-'
+	if [[ -r $cws_etc/engine.conf ]]; then
+		eng=$(grep -m1 '^engine=' "$cws_etc/engine.conf" | cut -d= -f2)
+	fi
+	if [[ -r $cws_etc/appliance.conf ]]; then
+		host=$(grep -m1 '^hostname=' "$cws_etc/appliance.conf" \
+			| cut -d= -f2)
+	fi
+	if [[ -r $cws_etc/members.tsv ]]; then
+		members=$(grep -c . "$cws_etc/members.tsv")
+	fi
+	printf 'engine: %s | hostname: %s | members: %s\n' \
+		"${eng:-not installed}" "${host:-none}" "$members"
+}
+
+menu_storage_add() {
+	local user provider name
+	user=$(ask 'Which user gets the drive' "${SUDO_USER:-cowork}")
+	provider=$(ask 'Provider (gdrive|onedrive|dropbox)' 'gdrive')
+	name=$(ask 'Remote name' 'drive')
+	"$cws_dir/storage.sh" add --user "$user" \
+		--provider "$provider" --name "$name"
+}
+
+menu_member_add() {
+	local name
+	name=$(ask 'New member username (lowercase)' '')
+	if [[ -z $name ]]; then
+		err 'no name given'
+		return 1
+	fi
+	"$cws_dir/member.sh" add "$name"
+}
+
+menu_ssh_config() {
+	local host
+	host=''
+	if [[ -r $cws_etc/appliance.conf ]]; then
+		host=$(grep -m1 '^hostname=' "$cws_etc/appliance.conf" \
+			| cut -d= -f2)
+	fi
+	host=$(ask 'Public hostname' "$host")
+	"$cws_dir/gen-sshconfigs.sh" --host "$host" --per-member \
+		--allowlist \
+		|| "$cws_dir/gen-sshconfigs.sh" --host "$host" \
+			--ssh-user "${SUDO_USER:-cowork}" --allowlist
+}
+
+menu() {
+	local choice
+	while true; do
+		{
+			printf '\n─ Coworkstation ─────────────────────────────\n'
+			printf '  %s\n' "$(status_line)"
+			printf '  1) health check (doctor)\n'
+			printf '  2) show my kasmVNC sign-in credentials\n'
+			printf '  3) add a cloud drive (Google Drive/OneDrive/Dropbox)\n'
+			printf '  4) add a member (read the terms note first)\n'
+			printf '  5) list members\n'
+			printf '  6) generate SSH-target config for Claude Desktop\n'
+			printf '  7) run/re-run setup\n'
+			printf '  8) update Coworkstation\n'
+			printf '  q) quit\n'
+			printf 'choice: '
+		} >&2
+		read -r choice || return 0
+		case "$choice" in
+			1) "$cws_dir/setup.sh" doctor ;;
+			2) cmd_credentials ;;
+			3) menu_storage_add ;;
+			4) menu_member_add ;;
+			5) "$cws_dir/member.sh" list ;;
+			6) menu_ssh_config ;;
+			7) "$cws_dir/setup.sh" ;;
+			8) cmd_update ;;
+			q|Q|quit|exit|'') return 0 ;;
+			*) err "unknown choice '$choice'" ;;
+		esac
+	done
+}
+
+main() {
+	local cmd="${1:-}"
+	if [[ $# -gt 0 ]]; then
+		shift
+	fi
+	case "$cmd" in
+		setup)       exec "$cws_dir/setup.sh" "$@" ;;
+		doctor)      exec "$cws_dir/setup.sh" doctor "$@" ;;
+		member)      exec "$cws_dir/member.sh" "$@" ;;
+		storage)     exec "$cws_dir/storage.sh" "$@" ;;
+		ssh-config)  exec "$cws_dir/gen-sshconfigs.sh" "$@" ;;
+		testbench)   exec "$cws_dir/testbench/setup.sh" "$@" ;;
+		credentials) cmd_credentials "$@" ;;
+		update)      cmd_update ;;
+		version|--version|-V) cmd_version ;;
+		help|--help|-h) usage ;;
+		'')
+			if is_tty; then
+				menu
+			else
+				usage >&2
+				return 1
+			fi
+			;;
+		*)
+			err "unknown command '$cmd'"
+			usage >&2
+			return 1
+			;;
+	esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+	main "$@"
+fi

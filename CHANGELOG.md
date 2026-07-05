@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`cws` — the Coworkstation CLI.** One command in front of the tools:
+  run bare on a terminal for an interactive menu (doctor, credentials,
+  add a cloud drive, add/list members, SSH-target config, re-run setup,
+  update), or dispatch directly (`cws member add`, `cws storage add`,
+  `cws doctor`, `cws credentials`, `cws update`, `cws version`).
+  Installed onto PATH by both install paths; the underlying scripts
+  remain the tested plumbing.
+- README "What it unlocks": an architecture diagram (Mermaid) and a
+  without/with table stating the value proposition — the local-compute
+  jobs (persistent sessions, 24/7 MCP, real-filesystem Code work,
+  Cowork VM on own hardware) that neither claude.ai in a browser nor a
+  carried laptop provides.
+
+### Changed
+
+- Post-install next-steps, README, and runbook speak `cws` first;
+  README Status explicitly marks arm64 as untested (code path only).
+
 ## [0.2.1] - 2026-07-05
 
 Fixes found while validating the whole product end-to-end on live boxes

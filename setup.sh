@@ -287,6 +287,9 @@ main() {
 
 	install_autostart "$user" || return 1
 
+	# Put the cws CLI on PATH so post-install management is one command.
+	run_cmd ln -sf "$cws_dir/cws" /usr/local/bin/cws || return 1
+
 	log_info 'provisioning complete. Next steps:'
 	if [[ $profile == 'kasmvnc' ]]; then
 		local home
@@ -303,18 +306,12 @@ main() {
 		&& $tunnel_mode == 'manual' ]]; then
 		log_info '  - finish the cloudflared tunnel steps printed above'
 	fi
-	log_info 'configure more later (each is idempotent and re-runnable):'
-	log_info "  - cloud storage:  sudo ./storage.sh add --user $user \\"
-	log_info '                      --provider gdrive|onedrive|dropbox' \
-		'--name drive'
-	log_info '                    (prompts for an rclone token; remove/list' \
-		'with the same tool)'
-	log_info '  - add a teammate: sudo ./member.sh add NAME' \
-		'(read the terms note first)'
-	log_info "  - SSH-target:     ./gen-sshconfigs.sh --host" \
-		"${hostname:-<hostname>} --per-member"
-	log_info '  - change engine/profile: re-run setup.sh with' \
-		'--engine/--profile (keeps existing config unless --force)'
+	log_info 'manage this box any time with the interactive CLI:'
+	log_info '  sudo cws            # menu: storage, members, doctor,'
+	log_info '                      # credentials, SSH-target, update'
+	log_info '  sudo cws storage add --user NAME --provider gdrive ...'
+	log_info '  sudo cws member add NAME     (read the terms note first)'
+	log_info '  cws help            # everything else'
 }
 
 # Only run when executed, so the BATS suite can source the functions.

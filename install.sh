@@ -94,7 +94,9 @@ fi
 if [[ ! -f $dir/setup.sh ]]; then
 	die "download looks wrong: $dir/setup.sh is missing"
 fi
-chmod +x "$dir"/*.sh "$dir"/testbench/*.sh 2> /dev/null || true
+chmod +x "$dir"/*.sh "$dir"/cws "$dir"/testbench/*.sh 2> /dev/null || true
+ln -sf "$dir/cws" /usr/local/bin/cws
+log "cws CLI installed (run 'cws' any time for the interactive menu)"
 
 log "running setup.sh"
 exec "$dir/setup.sh" "$@"
