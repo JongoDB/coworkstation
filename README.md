@@ -18,7 +18,7 @@ flowchart LR
 
     subgraph client["What your device contributes (loud consent)"]
         csync["ClientSync folder ⇄ box<br/>(default; iPad/Android/desktop)"]
-        cbridge["Browser bridge<br/>folder + screen share"]
+        cbridge["Browser bridge (PWA)<br/>folder + screen + clipboard"]
         cmount["Laptop live-mount<br/>(reverse sshfs)"]
     end
 
@@ -60,6 +60,7 @@ What each piece buys you that you can't get otherwise:
 | Local MCP servers live and die with your laptop's lid | MCP servers run 24/7 next to Claude's session |
 | Getting a file from the device in your hand to Claude = email-yourself gymnastics | **ClientSync (default):** the folder on your phone/tablet/laptop IS `~/ClientSync` on the box — Cowork and the Code tab use it directly |
 | Claude can't see what's on your screen to help with it | **Browser screen share** (loud, per-session consent): Claude sees your shared screen/window via the `client_screenshot` tool |
+| Copy/paste between an iPad and a remote desktop simply doesn't work (WebKit) | **Clipboard bridge** in the installable bridge PWA — device ⇄ box session clipboard |
 | Working on your laptop's local project means copying it up | **Laptop live-mount** (`cws-client`): your local folder mounts into the box over your SSH session — edits are seen in place |
 | Long agentic runs stop when you disconnect | Sessions persist across disconnects **and reboots** (live-validated) |
 | Code tab needs the desktop app on a machine you're carrying | Code tab runs on the always-on box; SSH-target mode also drops it into any desktop app you own |
@@ -169,7 +170,7 @@ chmod +x cws-client && ./cws-client mount ~/projects/app you@cws.example.com
 | **Zero-touch edge** | `--cf-api-token-file` provisions the Cloudflare tunnel, DNS, and Access policy via API — no `cloudflared tunnel login` |
 | **SSH-target mode** | `cws ssh-config` makes the box appear in your own desktop app's environment picker for Code-tab work — often the best experience, no VNC needed |
 | **Browser desktop** | a kasmVNC session behind Access when you need the full GUI (Cowork, the desktop app itself) |
-| **Remote storage** | `storage.sh` mounts Google Drive / OneDrive / Dropbox with a bounded cache, so the box stays small |
+| **Remote storage** | `cws storage add` mounts Google Drive / OneDrive / Dropbox with a bounded cache, so the box stays small |
 | **Doctor** | `cws doctor` — verifies a live loopback listener, flags any session port bound beyond loopback, and **checks every tunnel hostname has an Access policy** |
 
 ## Signing in
@@ -190,7 +191,7 @@ Open `https://<hostname>`, pass the Access login, enter the kasmVNC credentials,
 
 - **Each member signs in with their own Claude account.** Sharing one Claude login across people violates Anthropic's terms, and a shared session from a datacenter IP is exactly what account-security systems flag.
 - A multi-user datacenter box fanning people into Claude is a **materially riskier arrangement** than personal use — account standing is your risk to accept, and generic multi-user VDI (Kasm Workspaces, Guacamole) may serve a team better.
-- In manual tunnel mode a new member hostname is **public until you add its Access policy** — `member.sh` warns loudly and `./setup.sh doctor` fails on any ungated hostname in api mode.
+- In manual tunnel mode a new member hostname is **public until you add its Access policy** — `cws member add` warns loudly and `cws doctor` fails on any ungated hostname in api mode.
 
 ## Extras (experimental)
 
@@ -211,6 +212,10 @@ cws                                                # THE user-facing CLI (menu +
 install.sh                                         # network installer (curl | sudo bash)
 setup.sh member.sh storage.sh gen-sshconfigs.sh   # plumbing cws dispatches to
 lib/            # common, engine selection, doctor, tunnel API, session profiles
+libexec/        # cws-launch guardian (config-backup rotation before app start)
+bridge/         # browser-bridge server + client-screen MCP (node, no deps)
+client/         # cws-client — run on YOUR laptop (live-mount helper)
+docs/           # design, runbook, phases, ADRs, research reports
 testbench/      # experimental computer-use-substitute MCP servers
 images/         # cloud-init + Pi notes
 tests/          # BATS suites (run: bats tests/*.bats)
@@ -220,12 +225,13 @@ tests/          # BATS suites (run: bats tests/*.bats)
 
 ```bash
 bats tests/*.bats            # pure-logic, mocked infra, live Xvfb e2e
-shellcheck -x install.sh setup.sh member.sh storage.sh gen-sshconfigs.sh lib/*.sh lib/profiles/*.sh
+shellcheck -x cws libexec/cws-launch client/cws-client install.sh setup.sh \
+    member.sh storage.sh gen-sshconfigs.sh lib/*.sh lib/profiles/*.sh
 ```
 
 ## Status
 
-**Alpha.** Hardware-validated end-to-end on **x86-64** VPSes, both engines: bare Ubuntu 24.04 → the documented install → kasmVNC behind Cloudflare Access, doctor clean (including the Access-coverage check) — once on the **default official engine with `/dev/kvm`** (Anthropic's apt package, `backend=kvm`), and once on the opt-in **repo engine + bwrap**. A full smoke test also validated `member.sh`, `storage.sh`, reboot persistence, and re-run idempotency live, plus a from-zero install on **Debian 13**.
+**Alpha.** Hardware-validated end-to-end on **x86-64** VPSes, both engines: bare Ubuntu 24.04 → the documented install → kasmVNC behind Cloudflare Access, doctor clean (including the Access-coverage check) — once on the **default official engine with `/dev/kvm`** (Anthropic's apt package, `backend=kvm`), and once on the opt-in **repo engine** (validated pre-v3.0.0, when it still shipped a bwrap Cowork backend; both engines are now KVM-or-nothing — see [ADR-004](docs/decisions.md)). A full smoke test also validated `member.sh`, `storage.sh`, reboot persistence, and re-run idempotency live, plus a from-zero install on **Debian 13**.
 
 **Not yet verified:**
 
