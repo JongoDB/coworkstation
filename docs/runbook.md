@@ -17,6 +17,41 @@ cws doctor                                      # health check
 cws ssh-config --host claude.example.com --per-member
 ```
 
+## Choosing a host: KVM for Cowork
+
+Cowork's VM feature needs `/dev/kvm` on the box — which means bare
+metal, or a VPS whose provider enables nested virtualization. Test
+before you commit: nearly every provider bills hourly, so deploy the
+smallest instance, run the one-liner, destroy it if it fails.
+
+```bash
+[[ -e /dev/kvm ]] && echo 'KVM: yes' || echo 'KVM: no'
+grep -cE 'vmx|svm' /proc/cpuinfo   # 0 = no hardware virt exposed
+```
+
+`cws doctor` reports the same thing after install (`backend=kvm` vs a
+loud `backend=none` WARN). Everything except the Cowork VM — chat,
+Code tab, MCP servers, projects, the client bridge — works either way.
+
+Provider status **as of 2026-07** (this changes; the one-liner above
+is the truth, and corrections are welcome):
+
+| Host | `/dev/kvm` | Notes |
+|---|---|---|
+| Any mini-PC / home box / bare metal | **yes** | enable VT-x/AMD-V in the BIOS if missing |
+| Dedicated servers (Hetzner Robot/auction, OVH, etc.) | **yes** | it's real hardware |
+| AWS EC2 `*.metal` | **yes** | only the `.metal` instance types; regular EC2 VMs no |
+| Google Cloud (most x86 VMs) | **yes, opt-in** | set `enableNestedVirtualization`; [docs](https://cloud.google.com/compute/docs/instances/nested-virtualization/overview) |
+| Azure (v3-series and newer) | **yes** | Dv3/Ev3 onward; [docs](https://learn.microsoft.com/en-us/azure/virtual-machines/windows/nested-virtualization) |
+| Hetzner Cloud (CX/CPX/CAX) | **no** | nested virt not enabled on cloud servers; their dedicated line is the yes |
+| DigitalOcean droplets | **unsupported** | officially "not a planned or supported feature"; `/dev/kvm` sometimes appears but is undocumented and slow — don't build on it |
+| Linode/Akamai, Vultr cloud compute | **no** (reported) | community-reported as unavailable; run the one-liner to confirm |
+
+If Cowork-in-a-VM matters to you, the sweet spot is a mini-PC at home
+(N100-class boxes run the whole stack) or a cheap dedicated/auction
+server; among hourly clouds, GCP with the nested flag is the easiest
+to test on.
+
 ## Initial provision
 
 ### Zero-touch (recommended)

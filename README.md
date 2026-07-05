@@ -78,7 +78,7 @@ Coworkstation provisions the box; it does not create these for you:
 - A **fresh VPS/mini-PC**: Ubuntu 24.04 or Debian 12+, **≥ 4 GB RAM** and **≥ 25 GB disk** per active session (an Electron app + XFCE + kasmVNC is not tiny). x86-64 or arm64.
 - A **Claude subscription**. The tunnel runs on this same box (outbound-only) — no second machine.
 
-**KVM note:** Cowork's VM feature needs `/dev/kvm`, which most cheap VPSes don't expose. Without it, everything else (chat, Code tab, MCP, projects) works on the official app — setup tells you plainly. A mini-PC or KVM-capable host gets you the full feature set.
+**KVM note:** Cowork's VM feature needs `/dev/kvm`: any bare metal (mini-PC, dedicated/auction server) has it; among clouds, GCP (opt-in flag) and Azure v3+ expose it, AWS only on `*.metal` — while Hetzner Cloud doesn't, and DigitalOcean calls it unsupported. Check in 5 seconds with `[[ -e /dev/kvm ]]`, or see the [provider table](docs/runbook.md#choosing-a-host-kvm-for-cowork). Without it, everything else (chat, Code tab, MCP, projects, client bridge) works — setup and `cws doctor` tell you plainly.
 
 ## Install
 
