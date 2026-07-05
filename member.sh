@@ -29,6 +29,8 @@ source "$cws_dir/lib/profiles/kasmvnc.sh"
 source "$cws_dir/lib/tunnel-api.sh"
 # shellcheck source=lib/clientsync.sh
 source "$cws_dir/lib/clientsync.sh"
+# shellcheck source=lib/clientbridge.sh
+source "$cws_dir/lib/clientbridge.sh"
 
 registry_file() { printf '%s/members.tsv' "$appliance_etc"; }
 
@@ -184,7 +186,7 @@ member_autostart() {
 
 	run_as_user "$user" mkdir -p "$dir" || return 1
 	printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Claude' \
-		"Exec=$(claude_desktop_binary)" \
+		'Exec=cws-launch' \
 		'X-GNOME-Autostart-enabled=true' \
 		| write_file "$dir/claude-desktop.desktop" || return 1
 	if [[ ${appliance_dry_run:-0} -ne 1 ]]; then
@@ -244,6 +246,8 @@ cmd_add() {
 	clientsync_setup "$name" "$display" \
 		|| log_warn "client sync setup failed for $name (non-fatal);" \
 			"re-run with: sudo cws client setup --user $name"
+	clientbridge_setup "$name" "$display" "$member_host" \
+		|| log_warn "client bridge setup failed for $name (non-fatal)"
 
 	local base member_host=''
 	if base=$(appliance_base_hostname) && [[ -n $base ]]; then

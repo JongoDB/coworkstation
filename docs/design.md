@@ -287,9 +287,12 @@ by what each platform can actually do:
    frames exposed to Claude through a `client-screen` MCP server on
    the box. "Claude, look at what's on my screen" from a plain
    browser tab — no client install.
-3. **Reverse mount (SSH-target mode)** — laptops running their own
-   Claude Desktop against the box: a `cws-client` helper does
-   `ssh -R` + sshfs so the box sees the laptop's project folder live.
+3. **SHIPPED: laptop live-mount** (`client/cws-client`) — laptops
+   running their own Claude Desktop against the box reverse-mount a
+   local folder INTO the box (`sshfs -o passive` piped over the SSH
+   session, the Lima pattern) so the remote Code tab edits it in
+   place. `--access` tunnels via `cloudflared access ssh` for boxes
+   with no open SSH port.
 
 Consent posture: screen capture is per-session opt-in with a visible
 indicator and no frame persistence; folder shares are explicit picks,

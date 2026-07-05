@@ -55,6 +55,10 @@ cmd_client() {
 	source "$cws_dir/lib/common.sh"
 	# shellcheck source=lib/clientsync.sh
 	source "$cws_dir/lib/clientsync.sh"
+	# shellcheck source=lib/tunnel-api.sh
+	source "$cws_dir/lib/tunnel-api.sh"
+	# shellcheck source=lib/clientbridge.sh
+	source "$cws_dir/lib/clientbridge.sh"
 	local sub="${1:-help}"
 	if [[ $# -gt 0 ]]; then
 		shift
@@ -69,11 +73,24 @@ cmd_client() {
 		id)         clientsync_device_id "${1:-$user}" ;;
 		add-device) clientsync_add_device "$user" "${1:-}" "${2:-}" ;;
 		status)     clientsync_status "${1:-$user}" ;;
+		bridge-setup)
+			clientbridge_setup "$user" "${1:-1}" "${2:-}" ;;
+		bridge-link)
+			local bhost=''
+			if [[ -r $cws_etc/appliance.conf ]]; then
+				bhost=$(grep -m1 '^hostname=' \
+					"$cws_etc/appliance.conf" | cut -d= -f2)
+			fi
+			clientbridge_link "$user" "${1:-$bhost}" ;;
 		help|*)
 			printf 'cws client setup [--user U] [DISPLAY]\n'
 			printf 'cws client id [USER]        box device ID\n'
 			printf 'cws client add-device ID [LABEL]  pair a device\n'
 			printf 'cws client status [USER]\n'
+			printf 'cws client bridge-link [HOST]  tokened /bridge URL\n'
+			printf 'cws client bridge-setup [--user U] [DISPLAY] [HOST]\n'
+			printf 'laptop live-mount (run on the laptop):\n'
+			printf '  curl -fsSLO https://raw.githubusercontent.com/jongodb/coworkstation/main/client/cws-client\n'
 			;;
 	esac
 }

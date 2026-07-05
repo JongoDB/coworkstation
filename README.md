@@ -16,6 +16,12 @@ flowchart LR
         own["Your own Claude Desktop app<br/>(SSH-target mode)"]
     end
 
+    subgraph client["What your device contributes (loud consent)"]
+        csync["ClientSync folder ⇄ box<br/>(default; iPad/Android/desktop)"]
+        cbridge["Browser bridge<br/>folder + screen share"]
+        cmount["Laptop live-mount<br/>(reverse sshfs)"]
+    end
+
     subgraph edge["Cloudflare Zero Trust (your account)"]
         access["Access — SSO / MFA<br/>the security boundary"]
         tunnel["Tunnel — outbound only<br/>zero open inbound ports"]
@@ -37,6 +43,9 @@ flowchart LR
     access --> tunnel
     tunnel --> session
     own -. "ssh (Code tab)" .-> box
+    csync -. "syncs into" .-> fs
+    cbridge -. "/bridge via Access" .-> mcp
+    cmount -. "sshfs" .-> fs
     claude --- fs
     claude --- mcp
     fs --- drive
@@ -50,6 +59,8 @@ What each piece buys you that you can't get otherwise:
 | claude.ai on a tablet: chat only — no filesystem, no local MCP, the session dies with the tab | The full desktop app on your hardware, from that same tablet |
 | Local MCP servers live and die with your laptop's lid | MCP servers run 24/7 next to Claude's session |
 | Getting a file from the device in your hand to Claude = email-yourself gymnastics | **ClientSync (default):** the folder on your phone/tablet/laptop IS `~/ClientSync` on the box — Cowork and the Code tab use it directly |
+| Claude can't see what's on your screen to help with it | **Browser screen share** (loud, per-session consent): Claude sees your shared screen/window via the `client_screenshot` tool |
+| Working on your laptop's local project means copying it up | **Laptop live-mount** (`cws-client`): your local folder mounts into the box over your SSH session — edits are seen in place |
 | Long agentic runs stop when you disconnect | Sessions persist across disconnects **and reboots** (live-validated) |
 | Code tab needs the desktop app on a machine you're carrying | Code tab runs on the always-on box; SSH-target mode also drops it into any desktop app you own |
 | DIY = hand-rolling tunnel + SSO + VNC + user isolation + certs + updates, and *knowing* it's safe | One command; `cws doctor` verifies every claim — loopback binds, live listeners, an Access policy on **every** hostname |
@@ -115,7 +126,7 @@ Coworkstation discovers your account id **from the zone**, so the token does not
 ## Engines
 
 - **`official` (the default, always).** Anthropic's own apt build, unmodified — the only engine squarely within the app's terms, and the one the project stands behind. Without `/dev/kvm` the Cowork VM feature is unavailable and setup + doctor say so; nothing else is affected.
-- **`repo` (explicit opt-in, `--engine repo`).** The community [`claude-desktop-debian`](https://github.com/aaddrick/claude-desktop-debian) packaging. Since its v3.0.0 it repackages **Anthropic's official Linux `.deb`** — the app.asar ships byte-identical — adding a hardened launcher (config-wipe backup rotation, GPU/session recovery), its own doctor, and rpm/AppImage/Nix formats. Its former bwrap Cowork backend is parked upstream, so **both engines need `/dev/kvm` for the Cowork VM**. Still unofficial packaging (a knowing choice on Debian); the automatic fallback on non-Debian distros, where no official build exists.
+- **`repo` (explicit opt-in, `--engine repo`).** Installs the same official app via the community `claude-desktop-debian` packaging instead of Anthropic's apt repo — useful for rpm / AppImage / Nix hosts and non-Debian distros (where it's the automatic fallback). It's the same app either way; see [Credits](#credits) for what that project provides. Both engines need `/dev/kvm` for the Cowork VM.
 
 ## Your files
 
@@ -130,7 +141,22 @@ Client apps: [Syncthing](https://syncthing.net) (Android/desktop), [Möbius Sync
 
 **Optional: cloud-drive mounts.** `cws storage add --provider gdrive|onedrive|dropbox` mounts a member's cloud drive at `~/CloudDrives/<name>` with a bounded local cache — useful when a Drive folder is already the team's source of truth.
 
-**Proposed next (loud-consent, not yet built):** a browser bridge behind the same Access gate — desktop-browser folder share and per-session client **screen share** exposed to Claude via MCP. See [design.md](docs/design.md#client-bridge--proposed--not-yet-built).
+**Browser bridge (folder + screen share).** Behind the *same* Access gate as your session, `https://<hostname>/bridge/` lets the connecting device contribute to the remote Claude — no new login, no app install:
+
+- **Screen share** — press "Start screen share"; Claude sees ~1 fps of the screen/window/tab you pick via its `client_screenshot` tool. Loud per-session consent: a red SHARING banner, and closing the tab stops it (stale frames are refused).
+- **Folder share** (desktop Chrome/Edge) — pick a folder; its files copy to `~/ClientBridge/<name>` on the box.
+
+```bash
+sudo cws client bridge-link       # the tokened /bridge URL to open on the device
+```
+
+**Laptop live-mount.** Running your own Claude Desktop against the box (SSH-target mode)? Mount a local project *into* the box over that SSH session, so the remote Code tab edits it in place:
+
+```bash
+# on your laptop:
+curl -fsSLO https://raw.githubusercontent.com/jongodb/coworkstation/main/client/cws-client
+chmod +x cws-client && ./cws-client mount ~/projects/app you@cws.example.com
+```
 
 ## What you get
 
@@ -204,6 +230,14 @@ shellcheck -x install.sh setup.sh member.sh storage.sh gen-sshconfigs.sh lib/*.s
 - A **live cloud-drive mount** (the `storage.sh` config + unit are validated; mounting a real Drive needs a real OAuth token).
 
 The BATS suite validates script logic and dry-run plans, not Claude Desktop itself at scale.
+
+## Credits
+
+Coworkstation stands on other people's work and tries to say so plainly:
+
+- **[Claude Desktop](https://www.anthropic.com/claude) and its official Linux `.deb`** — Anthropic. Coworkstation installs and orchestrates it; the app is theirs.
+- **[`aaddrick/claude-desktop-debian`](https://github.com/aaddrick/claude-desktop-debian)** — the community Linux packaging. Since its v3.0.0 it repackages Anthropic's official `.deb` (app bytes unmodified) with a hardened launcher, its own doctor, and rpm/AppImage/Nix formats. We consume it as the opt-in `repo` engine and independently implemented `cws-launch` (config-wipe backup rotation) after their launcher demonstrated the idea — credit to that project for surfacing the failure mode.
+- **[Syncthing](https://syncthing.net)** (+ [Möbius Sync](https://www.mobiussync.com) on iOS) powers ClientSync. **[rclone](https://rclone.org)** powers the optional cloud-drive mounts. **[kasmVNC](https://github.com/kasmtech/KasmVNC)** is the browser session layer. **[Cloudflare Zero Trust](https://www.cloudflare.com/zero-trust/)** is the edge.
 
 ## License & terms
 

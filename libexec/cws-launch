@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#===============================================================================
+# cws-launch — guardian wrapper around the Claude Desktop launcher
+#
+# Runs as the session user, in front of whichever launcher is
+# installed. Before every launch it rotates copy-if-changed backups of
+# the config files whose only source of truth is the file itself —
+# the upstream app can serialize an empty state over them after a
+# failed cold-start read (anthropics/claude-code#32345/#59640/#63651),
+# and a pre-launch copy is the recovery path.
+#
+# Idea credit: aaddrick/claude-desktop-debian's hardened launcher
+# (v3.0.0). This is a from-scratch implementation for Coworkstation:
+# launcher-side only, the app bytes are never touched, and it works
+# in front of the official package too.
+#
+# Backups land in ~/.cache/coworkstation/config-backups/, newest
+# first, keeping the last 5 changed copies per file.
+#===============================================================================
+
+backup_root="${CWS_BACKUP_ROOT:-$HOME/.cache/coworkstation/config-backups}"
+claude_config="${CWS_CLAUDE_CONFIG:-$HOME/.config/Claude}"
+keep=5
+
+# Rotate one file into $backup_root, copy-if-changed, keep $keep.
+# $1 = absolute path of the live file.
+rotate_backup() {
+	local src="$1"
+	[[ -f $src ]] || return 0
+	local rel="${src#"$claude_config"/}"
+	local dir="$backup_root/${rel//\//_}"
+	mkdir -p "$dir" || return 0
+
+	# Backup filenames are sortable UTC stamps (ns precision so two
+	# launches in the same second still get distinct copies), so
+	# lexicographic sort IS newest-last.
+	local newest
+	newest=$(find "$dir" -maxdepth 1 -type f -printf '%f\n' \
+		2> /dev/null | sort | tail -1)
+	if [[ -n $newest ]] && cmp -s "$src" "$dir/$newest"; then
+		return 0
+	fi
+	cp -p "$src" "$dir/$(date -u +%Y%m%dT%H%M%S.%N)" 2> /dev/null \
+		|| return 0
+
+	local stale
+	while IFS= read -r stale; do
+		rm -f "$dir/$stale"
+	done < <(find "$dir" -maxdepth 1 -type f -printf '%f\n' \
+		2> /dev/null | sort -r | tail -n +"$((keep + 1))")
+}
+
+# The files whose loss is durable: the MCP/trusted-folders config and
+# the per-account Cowork stores (path varies per account, so glob).
+guard_configs() {
+	rotate_backup "$claude_config/claude_desktop_config.json"
+	local f
+	while IFS= read -r f; do
+		rotate_backup "$f"
+	done < <(find "$claude_config" -maxdepth 4 \
+		\( -name 'spaces.json' \
+		-o -name 'remote-session-spaces.json' \
+		-o -name 'scheduled-tasks.json' \) 2> /dev/null)
+}
+
+# Resolve the real launcher: official name first, community second.
+find_launcher() {
+	if command -v claude-desktop > /dev/null 2>&1; then
+		printf 'claude-desktop'
+	elif command -v claude-desktop-unofficial > /dev/null 2>&1; then
+		printf 'claude-desktop-unofficial'
+	else
+		return 1
+	fi
+}
+
+main() {
+	guard_configs
+	local launcher
+	if ! launcher=$(find_launcher); then
+		printf '[cws-launch] ERROR: no Claude Desktop launcher found\n' >&2
+		return 127
+	fi
+	exec "$launcher" "$@"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+	main "$@"
+fi

@@ -37,6 +37,8 @@ source "$cws_dir/lib/doctor.sh"
 source "$cws_dir/lib/tunnel-api.sh"
 # shellcheck source=lib/clientsync.sh
 source "$cws_dir/lib/clientsync.sh"
+# shellcheck source=lib/clientbridge.sh
+source "$cws_dir/lib/clientbridge.sh"
 # shellcheck source=lib/profiles/kasmvnc.sh
 source "$cws_dir/lib/profiles/kasmvnc.sh"
 # shellcheck source=lib/profiles/xrdp.sh
@@ -81,7 +83,7 @@ prompt_missing_flags() {
 # the zero-touch flow doesn't die on a missing tool with a misleading
 # error.
 install_base_deps() {
-	pkg_install jq openssl gnupg curl ca-certificates
+	pkg_install jq openssl gnupg curl ca-certificates sshfs
 }
 
 # An always-on internet-reachable box must patch itself: install and
@@ -139,12 +141,14 @@ install_autostart() {
 	fi
 }
 
+# Exec goes through the cws-launch guardian: it rotates config backups
+# (the config-wipe recovery path) and then execs the real launcher.
 autostart_entry() {
-	cat << EOF
+	cat << 'EOF'
 [Desktop Entry]
 Type=Application
 Name=Claude
-Exec=$(claude_desktop_binary)
+Exec=cws-launch
 X-GNOME-Autostart-enabled=true
 EOF
 }
@@ -289,8 +293,11 @@ main() {
 
 	install_autostart "$user" || return 1
 
-	# Put the cws CLI on PATH so post-install management is one command.
+	# Put the cws CLI on PATH so post-install management is one command,
+	# and the guardian launch wrapper where autostart entries expect it.
 	run_cmd ln -sf "$cws_dir/cws" /usr/local/bin/cws || return 1
+	run_cmd ln -sf "$cws_dir/libexec/cws-launch" \
+		/usr/local/bin/cws-launch || return 1
 
 	# Client sync is the DEFAULT file path onto the box (the folder on
 	# your device IS ~/ClientSync here). Non-fatal: a failure must not
@@ -298,6 +305,12 @@ main() {
 	clientsync_setup "$user" 1 \
 		|| log_warn 'client sync setup failed (non-fatal); re-run' \
 			'later with: sudo cws client setup'
+
+	# Browser bridge: folder + consented screen share behind the same
+	# Access gate, exposed to Claude via the client-screen MCP server.
+	clientbridge_setup "$user" 1 "$hostname" \
+		|| log_warn 'client bridge setup failed (non-fatal); re-run' \
+			'later with: sudo cws client bridge-setup'
 
 	log_info 'provisioning complete. Next steps:'
 	if [[ $profile == 'kasmvnc' ]]; then

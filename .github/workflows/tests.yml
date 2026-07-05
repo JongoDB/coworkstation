@@ -29,7 +29,7 @@ jobs:
       - name: Shellcheck
         run: |
           shellcheck -x \
-            install.sh cws setup.sh member.sh storage.sh gen-sshconfigs.sh \
+            install.sh cws libexec/cws-launch client/cws-client setup.sh member.sh storage.sh gen-sshconfigs.sh \
             testbench/setup.sh \
             lib/*.sh lib/profiles/*.sh
 
@@ -37,6 +37,9 @@ jobs:
         run: |
           node --check testbench/desktop-control-mcp.js
           node --check testbench/vm-bench-mcp.js
+          node --check bridge/server.js
+          node --check bridge/client-screen-mcp.js
+          node --check tests/helpers/bridge-test.js
           node --check tests/helpers/mcp-client.js
           node --check tests/helpers/qmp-mock-test.js
 

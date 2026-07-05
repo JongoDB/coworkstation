@@ -184,6 +184,53 @@ ingress_json_add() {
 		  end'
 }
 
+# Pure transform: add a PATH rule (hostname + path -> port). Cloudflared
+# evaluates ingress in order and a bare-hostname rule swallows every
+# path, so the path rule is inserted BEFORE the first rule for the same
+# hostname (or before the catch-all when the hostname has no plain rule
+# yet). Idempotent + reconciling like ingress_json_add.
+# Args: hostname path_regex port
+ingress_json_add_path() {
+	local hostname="$1"
+	local path_re="$2"
+	local port="$3"
+	jq --arg h "$hostname" --arg pa "$path_re" --arg p "$port" '
+		("http://127.0.0.1:" + $p) as $svc
+		| {hostname: $h, path: $pa, service: $svc} as $rule
+		| if any(.[]; .hostname == $h and .path == $pa
+			and .service == $svc) then .
+		  elif any(.[]; .hostname == $h and .path == $pa) then
+			[.[] | if .hostname == $h and .path == $pa
+			       then .service = $svc else . end]
+		  else
+			(map(.hostname == $h and (has("path") | not))
+				| index(true)) as $host_i
+			| ([.[] | .service == "http_status:404"]
+				| index(true)) as $catch_i
+			| ($host_i // $catch_i // length) as $at
+			| .[:$at] + [$rule] + .[$at:]
+		  end'
+}
+
+# Route /bridge/* on a session hostname to a local port, through the
+# recorded api-mode tunnel. Args: hostname port
+tunnel_api_bridge_route() {
+	local hostname="$1"
+	local port="$2"
+	local token_file account tunnel
+	token_file=$(tunnel_conf_get token_file) || return 1
+	account=$(tunnel_conf_get account_id) || return 1
+	tunnel=$(tunnel_conf_get tunnel_id) || return 1
+
+	tunnel_api_load_token "$token_file" || return 1
+	local ingress
+	ingress=$(cf_tunnel_get_ingress "$account" "$tunnel" \
+		| ingress_json_add_path "$hostname" '^/bridge(/.*)?$' \
+			"$port") || return 1
+	cf_tunnel_put_ingress "$account" "$tunnel" "$ingress" || return 1
+	log_info "bridge route ready: https://$hostname/bridge/"
+}
+
 # Pure transform: drop a hostname rule. stdin/stdout as above.
 ingress_json_remove() {
 	local hostname="$1"

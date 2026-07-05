@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+#===============================================================================
+# cws-client — run on YOUR laptop, not the box
+#
+# Live-mounts a local folder INTO your Coworkstation box over the SSH
+# session you already use for SSH-target mode, so the remote Claude
+# session (Code tab, Cowork mounts) works on the laptop's files in
+# place — no sync delay, no copies.
+#
+#   cws-client mount  ~/projects/app user@cws.example.com
+#   cws-client mount  ~/projects/app user@cws.example.com --access
+#   cws-client umount user@cws.example.com
+#
+# Mechanism: the reverse-sshfs pattern (as used by Lima) — a local
+# sftp-server is piped over the ssh connection into `sshfs -o passive`
+# on the box, mounting at ~/ClientMount on the box side. Nothing
+# listens on the laptop; closing this program unmounts.
+#
+# --access tunnels the SSH through Cloudflare Access
+# (`cloudflared access ssh`), for boxes with no open SSH port.
+#
+# Get it:
+#   curl -fsSLO https://raw.githubusercontent.com/jongodb/coworkstation/main/client/cws-client
+#   chmod +x cws-client
+#
+# Needs locally: ssh, an OpenSSH sftp-server binary, and socat or
+# dpipe. Needs on the box: sshfs (setup installs it).
+#===============================================================================
+
+set -u
+
+err() { printf '[cws-client] ERROR: %s\n' "$*" >&2; }
+info() { printf '[cws-client] %s\n' "$*"; }
+
+# Locate the OpenSSH sftp-server on this machine (path varies).
+find_sftp_server() {
+	local p
+	for p in /usr/lib/openssh/sftp-server \
+		/usr/libexec/openssh/sftp-server \
+		/usr/libexec/sftp-server \
+		/usr/lib/ssh/sftp-server; do
+		if [[ -x $p ]]; then
+			printf '%s' "$p"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# Compose the ssh argv (array) for a target, honoring --access.
+# Sets the global array ssh_cmd.
+build_ssh_cmd() {
+	local target="$1"
+	local use_access="$2"
+	ssh_cmd=(ssh -o BatchMode=no -o ServerAliveInterval=30)
+	if [[ $use_access -eq 1 ]]; then
+		local host="${target#*@}"
+		ssh_cmd+=(-o ProxyCommand="cloudflared access ssh --hostname $host")
+	fi
+	ssh_cmd+=("$target")
+}
+
+cmd_mount() {
+	local local_dir="$1"
+	local target="$2"
+	local use_access="${3:-0}"
+
+	if [[ ! -d $local_dir ]]; then
+		err "no such directory: $local_dir"
+		return 1
+	fi
+	local_dir=$(cd "$local_dir" && pwd)
+
+	local sftp
+	if ! sftp=$(find_sftp_server); then
+		err 'no OpenSSH sftp-server found on this machine'
+		return 1
+	fi
+
+	local pipe_tool=''
+	if command -v dpipe > /dev/null 2>&1; then
+		pipe_tool='dpipe'
+	elif command -v socat > /dev/null 2>&1; then
+		pipe_tool='socat'
+	else
+		err 'need socat or dpipe (vde2) installed locally'
+		return 1
+	fi
+
+	build_ssh_cmd "$target" "$use_access"
+	local mount_point='ClientMount'
+	local remote="sshfs -o passive :'$local_dir' \"\$HOME/$mount_point\" \
+&& echo CWS-MOUNTED && sleep infinity"
+	local pre="mkdir -p \"\$HOME/$mount_point\" && \
+fusermount -uz \"\$HOME/$mount_point\" 2>/dev/null; $remote"
+
+	info "mounting $local_dir -> ${target}:~/$mount_point"
+	info '(keep this running; Ctrl-C unmounts)'
+	if [[ $pipe_tool == 'dpipe' ]]; then
+		dpipe "$sftp" = "${ssh_cmd[@]}" "$pre"
+	else
+		socat "EXEC:$sftp" "EXEC:${ssh_cmd[*]} $(printf '%q' "$pre")"
+	fi
+}
+
+cmd_umount() {
+	local target="$1"
+	local use_access="${2:-0}"
+	build_ssh_cmd "$target" "$use_access"
+	# shellcheck disable=SC2016  # $HOME must expand on the BOX, not here
+	"${ssh_cmd[@]}" 'fusermount -uz "$HOME/ClientMount" && echo unmounted'
+}
+
+usage() {
+	sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
+main() {
+	local cmd="${1:-help}"
+	if [[ $# -gt 0 ]]; then
+		shift
+	fi
+	local use_access=0
+	local -a args=()
+	local a
+	for a in "$@"; do
+		if [[ $a == '--access' ]]; then
+			use_access=1
+		else
+			args+=("$a")
+		fi
+	done
+	case "$cmd" in
+		mount)
+			if [[ ${#args[@]} -lt 2 ]]; then
+				err 'usage: cws-client mount DIR user@host [--access]'
+				return 1
+			fi
+			cmd_mount "${args[0]}" "${args[1]}" "$use_access"
+			;;
+		umount|unmount)
+			if [[ ${#args[@]} -lt 1 ]]; then
+				err 'usage: cws-client umount user@host [--access]'
+				return 1
+			fi
+			cmd_umount "${args[0]}" "$use_access"
+			;;
+		help|-h|--help) usage ;;
+		*)
+			err "unknown command '$cmd'"
+			usage >&2
+			return 1
+			;;
+	esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+	main "$@"
+fi

@@ -7,6 +7,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Client bridge — the box now feels native to whatever device
+  connects.** `cws-launch` guardian wraps the launcher and rotates
+  config backups (config-wipe recovery; idea credit
+  claude-desktop-debian, from-scratch launcher-only impl). A **browser
+  bridge** at `https://<hostname>/bridge/` (path-routed behind the same
+  Access gate) shares the device's **screen** (loud per-session
+  consent → Claude's `client_screenshot` MCP tool) and **folders**
+  (desktop Chrome/Edge → `~/ClientBridge/`). A **laptop live-mount**
+  helper (`client/cws-client`) reverse-mounts a local folder into the
+  box over SSH-target mode. All provisioned per user, non-fatal,
+  re-runnable; live node harness + BATS cover them.
 - **ClientSync — device↔box file sync is now the default, out of the
   box.** Every user gets a Syncthing instance and `~/ClientSync` at
   setup (and per member at `member.sh add`); `cws client
