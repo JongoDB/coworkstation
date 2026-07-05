@@ -45,7 +45,7 @@ setup() {
 			'GET /zones/zone-1')
 				printf '{"success":true,"result":{"id":"zone-1","name":"example.com","account":{"id":"acct-1"}}}'
 				;;
-			'GET /accounts/acct-1/cfd_tunnel?name=coworkstation&is_deleted=false')
+			'GET /accounts/acct-1/cfd_tunnel?name=coworkstation-claude-example-com&is_deleted=false')
 				printf '{"success":true,"result":[]}'
 				;;
 			'POST /accounts/acct-1/cfd_tunnel'*)
@@ -158,7 +158,7 @@ teardown() {
 
 @test "cf_tunnel_ensure: creates when absent" {
 	local id
-	id=$(cf_tunnel_ensure acct-1 coworkstation)
+	id=$(cf_tunnel_ensure acct-1 coworkstation-claude-example-com)
 	[[ $id == 'tun-1' ]]
 	grep -q 'POST /accounts/acct-1/cfd_tunnel' "$CALL_LOG"
 }
@@ -169,7 +169,7 @@ teardown() {
 		printf '{"success":true,"result":[{"id":"tun-existing"}]}'
 	}
 	local id
-	id=$(cf_tunnel_ensure acct-1 coworkstation)
+	id=$(cf_tunnel_ensure acct-1 coworkstation-claude-example-com)
 	[[ $id == 'tun-existing' ]]
 	! grep -q '^POST' "$CALL_LOG"
 }

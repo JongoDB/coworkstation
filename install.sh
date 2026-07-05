@@ -29,12 +29,9 @@ pin_sha="${COWORKSTATION_SHA:-}"
 log() { printf '[coworkstation-install] %s\n' "$*"; }
 die() { printf '[coworkstation-install] ERROR: %s\n' "$*" >&2; exit 1; }
 
-if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
-	die 'run as root (pipe into: sudo bash)'
-fi
-
 # $dir is rm -rf'd below; refuse values that could nuke the system if a
-# stray COWORKSTATION_DIR leaks in from the environment.
+# stray COWORKSTATION_DIR leaks in from the environment. Checked before
+# the root gate so the most dangerous misconfiguration fails first.
 case "$dir" in
 	/|/bin|/boot|/dev|/etc|/home|/lib|/proc|/root|/run|/sbin|/srv|\
 	/sys|/tmp|/usr|/var|'')
@@ -45,6 +42,10 @@ case "$dir" in
 		die "COWORKSTATION_DIR must be an absolute path (got '$dir')"
 		;;
 esac
+
+if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+	die 'run as root (pipe into: sudo bash)'
+fi
 
 for tool in curl tar; do
 	command -v "$tool" > /dev/null 2>&1 || die "missing dependency: $tool"

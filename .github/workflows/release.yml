@@ -49,6 +49,7 @@ jobs:
             testbench/setup.sh lib/*.sh lib/profiles/*.sh
           bats --print-output-on-failure \
             tests/common.bats tests/engine.bats tests/doctor.bats \
+            tests/install.bats \
             tests/kasmvnc.bats \
             tests/member.bats tests/storage.bats tests/setup.bats \
             tests/sshconfigs.bats tests/tunnel-api.bats

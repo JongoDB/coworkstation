@@ -402,7 +402,8 @@ tunnel_api_provision() {
 	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
 		printf 'DRY-RUN: cloudflare api provisioning plan:\n'
 		printf '    verify token from %s\n' "$token_file"
-		printf '    ensure tunnel "coworkstation" (remote-managed)\n'
+		printf '    ensure tunnel "coworkstation-%s" (remote-managed)\n' \
+			"${hostname//./-}"
 		printf '    ingress: %s -> http://127.0.0.1:%s\n' \
 			"$hostname" "$port"
 		printf '    proxied CNAME %s -> <tunnel>.cfargotunnel.com\n' \
@@ -434,8 +435,14 @@ tunnel_api_provision() {
 		return 1
 	fi
 
-	local tunnel
-	tunnel=$(cf_tunnel_ensure "$account" 'coworkstation') \
+	# Tunnel name is derived from the hostname: a FIXED name means two
+	# Coworkstation boxes in one Cloudflare account would adopt the SAME
+	# tunnel and merge their ingress — each hostname then routes through
+	# whichever box's connector picks up, which cannot reach the other
+	# box's loopback. Per-hostname names keep boxes independent.
+	local tunnel tunnel_name
+	tunnel_name="coworkstation-${hostname//./-}"
+	tunnel=$(cf_tunnel_ensure "$account" "$tunnel_name") \
 		|| return 1
 
 	local ingress
