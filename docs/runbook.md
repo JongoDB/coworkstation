@@ -200,10 +200,16 @@ established client connections and no bridge activity inside the
 window. Homes persist; `cws sessions start USER` brings one back.
 
 ```bash
-printf 'idle_hours=8\n' | sudo tee /etc/coworkstation/reclaim.conf
+sudo tee /etc/coworkstation/reclaim.conf << 'EOF'
+idle_hours=8            # global window (0 = off)
+idle_hours.alice=2      # per-member override
+dormant_days=30         # long-idle stopped sessions show DORMANT
+EOF
 sudo cws reclaim --dry-run          # preview
-# cron it (root): 17 * * * * /usr/local/bin/cws reclaim
 ```
+
+Setup installs an hourly `cws-reclaim.timer` that runs this for you —
+it's a no-op until the config above opts in.
 
 ## Break-glass access
 

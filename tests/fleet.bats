@@ -226,6 +226,49 @@ EOF
 	[[ ! -f $TEST_TMP/stopped3 ]]
 }
 
+@test "fleet_reclaim: per-member idle_hours override wins" {
+	printf 'idle_hours=0\nidle_hours.night=1\n' \
+		> "$APPLIANCE_ETC/reclaim.conf"
+	[[ $(fleet_reclaim_idle_hours) == 0 ]]
+	[[ $(fleet_reclaim_idle_hours night) == 1 ]]
+	[[ $(fleet_reclaim_idle_hours other) == 0 ]]
+	fleet_users() { printf 'night\nother\n'; }
+	user_systemctl() {
+		if [[ $2 == 'is-active' ]]; then printf 'active\n'; return 0; fi
+		printf '%s\n' "$1" >> "$TEST_TMP/stopped4"
+	}
+	fleet_user_port() { printf '8443'; }
+	fleet_port_clients() { printf '0'; }
+	fleet_last_activity() { printf '1'; }
+	run fleet_reclaim
+	[[ $status -eq 0 ]]
+	[[ $output == *'reclaimed: night'* ]]
+	[[ $output != *'reclaimed: other'* ]]
+	[[ $(cat "$TEST_TMP/stopped4") == 'night' ]]
+}
+
+@test "fleet_sessions: stopped + long-idle shows DORMANT" {
+	printf 'dormant_days=30\n' > "$APPLIANCE_ETC/reclaim.conf"
+	fleet_users() { printf 'ghost\n'; }
+	user_systemctl() { return 3; }
+	fleet_port_clients() { printf '0'; }
+	fleet_last_activity() { printf '1'; }
+	run fleet_sessions
+	[[ $status -eq 0 ]]
+	[[ ${lines[1]} == ghost*DORMANT* ]]
+}
+
+@test "fleet_reclaim units: oneshot service + hourly persistent timer" {
+	local svc timer
+	svc=$(fleet_reclaim_service_unit)
+	timer=$(fleet_reclaim_timer_unit)
+	[[ $svc == *'Type=oneshot'* ]]
+	[[ $svc == *'/usr/local/bin/cws reclaim'* ]]
+	[[ $timer == *'OnCalendar=hourly'* ]]
+	[[ $timer == *'Persistent=true'* ]]
+	[[ $timer == *'WantedBy=timers.target'* ]]
+}
+
 @test "fleet_audit_access: manual mode points at the dashboard" {
 	tunnel_conf_get() { printf 'manual'; }
 	run fleet_audit_access 5

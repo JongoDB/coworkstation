@@ -72,6 +72,18 @@ fleet_sessions() {
 		state=$(user_systemctl "$user" is-active kasmvnc.service \
 			2> /dev/null) || state='inactive'
 		port=$(fleet_user_port "$user")
+		# Two-step lifecycle: a stopped session with no activity for
+		# dormant_days shows as dormant (deletion stays a human call).
+		if [[ $state != 'active' ]]; then
+			local ddays dcut
+			ddays=$(fleet_dormant_days)
+			if [[ $ddays -gt 0 ]]; then
+				dcut=$(($(date +%s) - ddays * 86400))
+				if [[ $(fleet_last_activity "$user") -lt $dcut ]]; then
+					state='DORMANT'
+				fi
+			fi
+		fi
 		since='-'
 		if [[ $state == 'active' ]]; then
 			since=$(user_systemctl "$user" show kasmvnc.service \
@@ -128,11 +140,33 @@ fleet_usage_scan() {
 # Reclaim = stop the kasmVNC unit; /home persists (Coder's
 # "Stopped", not "Deleted" — offboarding stays a human decision via
 # member remove). Opt-in: idle_hours=0 (the default) disables it.
+# Idle window for a user: per-member override line
+# (idle_hours.NAME=N) wins over the global idle_hours=N; 0 = off.
 fleet_reclaim_idle_hours() {
+	local user="${1:-}"
 	local conf="${appliance_etc:-/etc/coworkstation}/reclaim.conf"
 	local v=''
 	if [[ -r $conf ]]; then
-		v=$(grep -m1 '^idle_hours=' "$conf" | cut -d= -f2)
+		if [[ -n $user ]]; then
+			v=$(grep -m1 "^idle_hours\.${user}=" "$conf" \
+				| cut -d= -f2)
+		fi
+		if [[ ! $v =~ ^[0-9]+$ ]]; then
+			v=$(grep -m1 '^idle_hours=' "$conf" | cut -d= -f2)
+		fi
+	fi
+	if [[ ! $v =~ ^[0-9]+$ ]]; then
+		v=0
+	fi
+	printf '%s' "$v"
+}
+
+# Days a stopped, inactive session counts as dormant (0 = never).
+fleet_dormant_days() {
+	local conf="${appliance_etc:-/etc/coworkstation}/reclaim.conf"
+	local v=''
+	if [[ -r $conf ]]; then
+		v=$(grep -m1 '^dormant_days=' "$conf" | cut -d= -f2)
 	fi
 	if [[ ! $v =~ ^[0-9]+$ ]]; then
 		v=0
@@ -167,16 +201,20 @@ fleet_last_activity() {
 # only report. Run from cron/a timer or `cws reclaim`.
 fleet_reclaim() {
 	local dry="${1:-}"
-	local hours
-	hours=$(fleet_reclaim_idle_hours)
-	if [[ $hours -eq 0 ]]; then
-		log_info 'idle reclaim is off (set idle_hours=N in' \
-			"${appliance_etc:-/etc/coworkstation}/reclaim.conf)"
+	local conf="${appliance_etc:-/etc/coworkstation}/reclaim.conf"
+	if [[ $(fleet_reclaim_idle_hours) -eq 0 ]] \
+		&& ! grep -q '^idle_hours\.' "$conf" 2> /dev/null; then
+		log_info "idle reclaim is off (set idle_hours=N in $conf;" \
+			'per-member: idle_hours.NAME=N)'
 		return 0
 	fi
-	local cutoff=$(($(date +%s) - hours * 3600))
+	local now hours cutoff
+	now=$(date +%s)
 	local user state conns last
 	while read -r user; do
+		hours=$(fleet_reclaim_idle_hours "$user")
+		[[ $hours -gt 0 ]] || continue
+		cutoff=$((now - hours * 3600))
 		state=$(user_systemctl "$user" is-active kasmvnc.service \
 			2> /dev/null) || state='inactive'
 		[[ $state == 'active' ]] || continue
@@ -199,6 +237,34 @@ fleet_reclaim() {
 			'home persists — restart with: cws sessions start' \
 			"$user)"
 	done < <(fleet_users)
+}
+
+# System units for scheduled reclaim; installed by setup, harmless
+# while reclaim is unconfigured (the run logs 'off' and exits 0).
+fleet_reclaim_service_unit() {
+	cat << 'EOF'
+[Unit]
+Description=Coworkstation idle-session reclaim
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cws reclaim
+EOF
+}
+
+fleet_reclaim_timer_unit() {
+	cat << 'EOF'
+[Unit]
+Description=Hourly Coworkstation idle-session reclaim
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
 }
 
 # Device inventory (ADR-008 phase 3a): every device that touched a

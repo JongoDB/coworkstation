@@ -75,11 +75,15 @@ P2-F0..P2-F9).
        signals — no established client connections AND no bridge
        activity within `idle_hours` (`reclaim.conf`, default 0 =
        off) — homes persist, every reclaim is recorded, `--dry-run`
-       previews; run it from cron/a timer. Remaining: keepalive
-       countdown UX, dormant-then-archive step, per-member policy
-       overrides, multi-display concurrent sessions. Imitate the
-       verified
-       blueprint: Kasm's create/status/keepalive/destroy with policy
+       previews. Setup installs an hourly systemd timer
+       (`cws-reclaim.timer`, a no-op until `reclaim.conf` opts in).
+       Per-member overrides ship (`idle_hours.NAME=N` beats the
+       global), and the two-step lifecycle is visible:
+       `dormant_days=N` makes long-idle stopped sessions show
+       DORMANT in `cws sessions` — deletion stays a human decision.
+       Remaining: keepalive countdown UX, multi-display concurrent
+       sessions. The blueprint being imitated:
+       Kasm's create/status/keepalive/destroy with policy
        in per-member config (keepalive expiration + absolute session
        time limit), Coder's Running/Stopped(-home-persists)/Deleted
        states with connection-based idle bump, and the two-step

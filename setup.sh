@@ -37,6 +37,8 @@ source "$cws_dir/lib/doctor.sh"
 source "$cws_dir/lib/tunnel-api.sh"
 # shellcheck source=lib/clientsync.sh
 source "$cws_dir/lib/clientsync.sh"
+# shellcheck source=lib/fleet.sh
+source "$cws_dir/lib/fleet.sh"
 # shellcheck source=lib/clientbridge.sh
 source "$cws_dir/lib/clientbridge.sh"
 # shellcheck source=lib/profiles/kasmvnc.sh
@@ -88,6 +90,20 @@ install_base_deps() {
 
 # An always-on internet-reachable box must patch itself: install and
 # switch on unattended-upgrades (the doctor otherwise WARNs forever).
+install_reclaim_timer() {
+	fleet_reclaim_service_unit \
+		| write_file /etc/systemd/system/cws-reclaim.service \
+		|| return 1
+	fleet_reclaim_timer_unit \
+		| write_file /etc/systemd/system/cws-reclaim.timer \
+		|| return 1
+	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
+		return 0
+	fi
+	run_cmd systemctl daemon-reload || return 1
+	run_cmd systemctl enable --now cws-reclaim.timer
+}
+
 enable_unattended_upgrades() {
 	pkg_install unattended-upgrades || return 1
 	printf '%s\n' \
@@ -311,6 +327,12 @@ main() {
 	clientbridge_setup "$user" 1 "$hostname" \
 		|| log_warn 'client bridge setup failed (non-fatal); re-run' \
 			'later with: sudo cws client bridge-setup'
+
+	# Hourly idle-reclaim timer: a no-op until reclaim.conf opts in,
+	# so installing it unconditionally is safe.
+	install_reclaim_timer \
+		|| log_warn 'reclaim timer install failed (non-fatal);' \
+			'cron "cws reclaim" yourself'
 
 	log_info 'provisioning complete. Next steps:'
 	if [[ $profile == 'kasmvnc' ]]; then

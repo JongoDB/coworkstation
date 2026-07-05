@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Reclaim policy + scheduling (3b tail).** Per-member idle windows
+  (`idle_hours.NAME=N` overrides the global), a DORMANT state in
+  `cws sessions` for stopped sessions idle past `dormant_days`
+  (deletion stays manual), and setup now installs an hourly
+  `cws-reclaim.timer` that is a no-op until `reclaim.conf` opts in.
+
 - **Encrypted backup (ADR-009).** `cws backup setup|run|list` wraps
   restic: client-side encrypted snapshots of every session home
   (cache excludes, `coworkstation` tag) to any restic target
