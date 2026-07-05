@@ -99,7 +99,7 @@ storage_unit() {
 	local cache_max="$2"
 	cat << EOF
 [Unit]
-Description=rclone mount: ${name} (Claude appliance cloud storage)
+Description=rclone mount: ${name} (Coworkstation cloud storage)
 After=network-online.target
 
 [Service]
@@ -178,6 +178,11 @@ cmd_add() {
 	backend=$(storage_backend_for "$provider") || return 1
 	if [[ ! $name =~ ^[a-z][a-z0-9-]{0,30}$ ]]; then
 		log_err "invalid remote name '$name'"
+		return 1
+	fi
+	if [[ ! $cache_max =~ ^[0-9]+(\.[0-9]+)?[KMGTkmgt]?i?$ ]]; then
+		log_err "invalid --cache-max '$cache_max' (rclone SizeSuffix," \
+			'e.g. 10G, 512M)'
 		return 1
 	fi
 	if ! id "$user" > /dev/null 2>&1; then

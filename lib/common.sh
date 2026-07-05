@@ -9,12 +9,18 @@
 #   appliance_force     0|1  overwrite config files that already exist
 #
 # Overridable roots (BATS points these at a sandbox):
-#   APPLIANCE_ETC       default /etc/claude-appliance
+#   APPLIANCE_ETC       default /etc/coworkstation
+#
+# Naming note: internal variables and test-seam env vars keep the
+# historic APPLIANCE_ prefix (the project began as "the appliance"
+# layer of claude-desktop-debian). User-visible strings say
+# Coworkstation; renaming the seams would churn every test for zero
+# user benefit.
 #===============================================================================
 
-log_info() { printf '[appliance] %s\n' "$*"; }
-log_warn() { printf '[appliance] WARN: %s\n' "$*" >&2; }
-log_err()  { printf '[appliance] ERROR: %s\n' "$*" >&2; }
+log_info() { printf '[coworkstation] %s\n' "$*"; }
+log_warn() { printf '[coworkstation] WARN: %s\n' "$*" >&2; }
+log_err()  { printf '[coworkstation] ERROR: %s\n' "$*" >&2; }
 
 # Guard a value-taking flag in an argument parser. Call as
 # `require_value "$@"` from inside the flag's case branch: it fails when

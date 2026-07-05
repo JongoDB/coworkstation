@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #===============================================================================
-# Claude appliance provisioning — Phase 1 (single user)
+# Coworkstation provisioning — Phase 1 (single user)
 #
 # Takes a fresh Debian 12+/Ubuntu 24.04+ box to a working headless
-# Claude Desktop appliance: engine installed, XFCE session over the
+# Claude Desktop workstation: engine installed, XFCE session over the
 # selected profile, cloudflared skeleton, XDG autostart, doctor.
 #
 # Usage:
@@ -80,6 +80,16 @@ prompt_missing_flags() {
 # error.
 install_base_deps() {
 	pkg_install jq openssl gnupg curl ca-certificates
+}
+
+# An always-on internet-reachable box must patch itself: install and
+# switch on unattended-upgrades (the doctor otherwise WARNs forever).
+enable_unattended_upgrades() {
+	pkg_install unattended-upgrades || return 1
+	printf '%s\n' \
+		'APT::Periodic::Update-Package-Lists "1";' \
+		'APT::Periodic::Unattended-Upgrade "1";' \
+		| write_file /etc/apt/apt.conf.d/20auto-upgrades || return 1
 }
 
 install_session_stack() {
@@ -208,6 +218,7 @@ main() {
 				'policy is public)'
 			return 1
 		fi
+		validate_access_allow "$access_allow" || return 1
 	fi
 
 	if [[ $mode == 'doctor' ]]; then
@@ -248,6 +259,7 @@ main() {
 
 	run_cmd apt-get update || return 1
 	install_base_deps || return 1
+	enable_unattended_upgrades || return 1
 	install_session_stack || return 1
 	install_engine "$user" || return 1
 

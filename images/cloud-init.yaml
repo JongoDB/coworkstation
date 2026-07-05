@@ -1,5 +1,5 @@
 #cloud-config
-# Claude Cowork appliance — first-boot bootstrap for a VPS/mini-PC.
+# Coworkstation — first-boot bootstrap for a VPS/mini-PC.
 #
 # Before use, replace the two placeholders:
 #   __HOSTNAME__   public hostname (e.g. claude.example.com)
@@ -38,13 +38,20 @@ write_files:
   - path: /etc/motd
     append: true
     content: |
-      ── Claude Cowork appliance ──────────────────────────────
-      Provisioned by cloud-init. Remaining manual steps:
-        1. cloudflared tunnel login && cloudflared tunnel create
-        2. finish /etc/cloudflared/config.yml, route DNS, install svc
-        3. add a Cloudflare Access policy for __HOSTNAME__
-        4. open the session in a browser, sign into Claude
-        5. sudo /opt/coworkstation/setup.sh doctor
+      ── Coworkstation ────────────────────────────────────────
+      Provisioned by cloud-init (manual tunnel mode). Next steps:
+        1. EITHER re-run zero-touch: put a scoped CF token in a
+           0600 root file, then
+             sudo /opt/coworkstation/setup.sh \
+               --hostname __HOSTNAME__ \
+               --cf-api-token-file /root/cf-token \
+               --access-allow you@example.com
+           OR finish manually: cloudflared tunnel login/create,
+           /etc/cloudflared/config.yml, route DNS, install svc,
+           and add a Cloudflare Access policy for __HOSTNAME__
+        2. kasmVNC password: sudo cat ~cowork/.vnc/kasm-credentials
+        3. open https://__HOSTNAME__ , pass Access, sign into Claude
+        4. sudo /opt/coworkstation/setup.sh doctor --user cowork
       Runbook: /opt/coworkstation/docs/runbook.md
 
 runcmd:

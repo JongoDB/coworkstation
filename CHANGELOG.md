@@ -5,110 +5,124 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
+## [0.2.0] - 2026-07-05
 
-- **BREAKING: engine auto-selection always picks the official Anthropic
-  build on Debian-family hosts.** Previously a KVM-less host silently
-  got the community `claude-desktop-debian` repackaging; now the
-  unmodified first-party binary is never traded away automatically —
-  without `/dev/kvm` the Cowork VM feature is reported unavailable
-  (`backend=none`, a doctor WARN) and the repo build requires an
-  explicit `--engine repo` opt-in with a terms warning.
-- README repositioned around single-user personal infrastructure and
-  the local-compute jobs the web can't do (Code tab on a real
-  filesystem, own MCP servers, persistent sessions). SSH-target mode
-  leads; multi-user is an "Advanced" section with the per-account terms
-  posture spelled out; `testbench/` is marked experimental.
-- `docs/design.md` gains a "Positioning & risk" section stating the
-  product bet, the multi-user posture, the engine legal posture, and
-  the triggers (web Cowork, mobile Code, first-party Linux computer
-  use) that should force a scope rethink.
+First published release. 0.1.0 existed only as repository history; the
+0.2.0 entries below therefore include the initial feature set plus the
+fixes and hardening from the from-zero audit and two live validations.
 
 ### Added
 
-- **Doctor: Access-coverage check.** In api mode the doctor enumerates
-  the tunnel's ingress hostnames and FAILs on any without a Cloudflare
-  Access application (a proxied hostname with no Access app is a public
-  desktop that looked healthy in every other check). Manual mode warns
-  that coverage can't be verified.
-- `member.sh add` prints a per-user-accounts terms warning; api mode
-  confirms the Access app was provisioned.
-- Reconcile-on-rerun: `ingress_json_add` updates a rule whose port
-  moved instead of keeping it stale, and `cf_access_ensure_app` updates
-  an existing allow policy when `--access-allow` changed.
+- `install.sh` — network installer (`curl … | sudo bash`) for prod,
+  plus `setup.sh` for clone-and-run; refuses dangerous
+  `COWORKSTATION_DIR` values, never silently falls back to the default
+  branch when a ref was pinned, and supports `COWORKSTATION_SHA` to
+  verify the checkout before executing anything.
+- `setup.sh` — one-command provisioning: engine install, XFCE +
+  kasmVNC session (per-user cert, non-interactive control user, random
+  credentials in `~/.vnc/kasm-credentials`), Cloudflare tunnel (manual
+  or zero-touch API mode), XDG autostart, unattended-upgrades, and an
+  interactive wizard on a TTY. Creates a default `cowork` account when
+  run as root with no `--user` (the fresh-VPS case).
+- Zero-touch Cloudflare edge via a scoped API token: remotely-managed
+  tunnel, ingress, proxied DNS, and Access application + allow policy,
+  non-interactively. The account id is derived from the zone, so the
+  documented resource-scoped token is sufficient.
+- **Doctor** (`./setup.sh doctor`): engine/backend record, live
+  loopback-listener check, public-bind scan across the full member
+  port range, tunnel checks, keyring state, and an **Access-coverage
+  check** — in api mode every tunnel ingress hostname without an
+  Access app is a FAIL (an ungated proxied hostname is a public
+  desktop).
+- `member.sh` — multi-user lifecycle (advanced): per-member account
+  (0700 home), systemd slice quotas, own kasmVNC display/port and
+  hostname, per-user-accounts terms warning, exclusive locking, and a
+  confirmation gate before home-deleting removals.
+- `storage.sh` — remote-backed storage (Google Drive / OneDrive /
+  Dropbox) with a bounded rclone VFS cache; OAuth token written
+  directly to the member's `0600` rclone.conf.
+- `gen-sshconfigs.sh` — managed-settings `sshConfigs` generator for
+  SSH-target mode.
+- `testbench/` — experimental computer-use-substitute MCP servers.
+- `images/` — cloud-init bootstrap and Raspberry Pi notes.
+- CI: shellcheck, node --check, cloud-init YAML validation, and the
+  BATS suite with a live Xvfb end-to-end; a **Release workflow**
+  (workflow_dispatch) that gates on the test suite, then creates the
+  annotated tag and GitHub Release from CI.
+- Reconcile-on-rerun: an ingress rule whose port moved is updated in
+  place, and a changed `--access-allow` list updates the existing
+  Access policy.
+- Hardware-validated on DigitalOcean Ubuntu 24.04 VPSes on BOTH
+  engines: the default official engine (Anthropic apt package,
+  `/dev/kvm` present, `backend=kvm`) and the opt-in repo engine
+  (bwrap). Each run: bare box → documented install → kasmVNC behind
+  Cloudflare Access, doctor clean including the Access-coverage check.
+  Raspberry Pi remains specified but not hardware-verified.
+
+### Changed
+
+- **BREAKING: engine auto-selection always picks the official
+  Anthropic build on Debian-family hosts.** A KVM-less host previously
+  got the community `claude-desktop-debian` repackaging silently; now
+  the unmodified first-party binary is never traded away automatically
+  — without `/dev/kvm` the Cowork VM feature is reported unavailable
+  (`backend=none`, doctor WARN) and the repo build requires an
+  explicit `--engine repo` opt-in with a terms warning (it remains the
+  automatic fallback only on non-Debian distros).
+- **BREAKING: user-visible naming unified on Coworkstation** — config
+  root `/etc/coworkstation` (was `/etc/claude-appliance`), tunnel name
+  `coworkstation` (was `claude-appliance`), log prefix
+  `[coworkstation]`, unit descriptions and slice/env drop-in
+  filenames. Internal `APPLIANCE_*` test seams are unchanged and
+  documented as historic.
+- README repositioned around single-user personal infrastructure and
+  the local-compute jobs the web can't do; SSH-target mode leads;
+  multi-user is an "Advanced" section with the terms posture spelled
+  out; prerequisites, the Cloudflare token recipe, honest Alpha
+  status, and a License & terms section.
+- `docs/design.md` gains a "Positioning & risk" section (the product
+  bet, multi-user posture, engine legal posture, and the triggers that
+  should force a scope rethink).
 
 ### Fixed
 
-- **Zero-touch install no longer fails on a correctly-scoped token.** The
-  Cloudflare account id is now discovered from the zone (a
-  resource-scoped token cannot list `/accounts`; Cloudflare returns an
-  empty array, which previously aborted provisioning).
-- **Fresh-VPS install works as root.** With no `--user`/`$SUDO_USER`,
-  `setup.sh` provisions a default `cowork` account instead of dying with
-  "cannot determine target user."
-- **`jq`/`openssl`/`gnupg` are installed** before the paths that need
-  them, so the zero-touch flow no longer fails at the first API call with
-  a misleading "token failed verification."
-- **`member.sh add` provisions the kasmVNC cert and control user**, so an
-  added member's session actually starts (previously it exited 1 on a
-  missing cert or looped forever on the control-user prompt).
-- **A forgotten flag value no longer hangs the parser** — `require_value`
-  aborts instead of spinning the argument loop forever.
+- Zero-touch provisioning aborted for the documented resource-scoped
+  token (`GET /accounts` returns an empty list for such tokens).
+- Fresh-VPS root install died with "cannot determine target user";
+  the default-account creation itself then leaked its log line into
+  the captured username (caught by the live install) — logging now
+  goes to stderr, with a regression test.
+- `jq`/`openssl`/`gnupg` are installed before the paths that need
+  them (the first Cloudflare call previously failed as a misleading
+  "token failed verification").
+- `member.sh add` provisions the kasmVNC cert and control user, so an
+  added member's session actually starts.
+- A forgotten flag value no longer hangs any argument parser
+  (`require_value` guard everywhere).
 - `member.sh`, `storage.sh`, `gen-sshconfigs.sh`, `testbench/setup.sh`
-  are committed executable (the cloud-init clone path invoked them
+  are committed executable (the cloud-init clone path invokes them
   directly).
-- `cf_tunnel_ensure` captures the API response before parsing, so a
-  transient error can no longer create a second tunnel of the same name.
+- Every `cf_call | jq` pipeline captures the response first, so a
+  transient API failure can no longer masquerade as "not found" —
+  worst case previously created a second tunnel of the same name.
+- An `--engine` switch on re-run retargets the apt source (the list
+  file is force-written); the doctor reports "cannot verify" instead
+  of a spurious FAIL when `ss` is unavailable; `--cache-max` is
+  validated; the ingress idempotency guard no longer treats hostname
+  dots as regex wildcards.
 
 ### Security
 
-- The Cloudflare API token is passed to `curl` via stdin config, not
-  argv (`/proc/*/cmdline` is world-readable on a multi-user box).
-- The rclone OAuth token is written straight into the member's `0600`
-  `rclone.conf` instead of appearing on `rclone config create`'s argv.
-- The cloudflared connector-token unit file is locked to `0600`.
-- Each member's home is `chmod 700`; hostnames are validated; member
-  removal confirms before wiping a home; the kasmVNC key is generated
-  under `umask 077`; the doctor's port scan scales past ~7 members and
-  no longer treats a wildcard bind as a healthy listener.
-
-### Changed
-
-- README rewritten: prerequisites, a fully-flagged primary install
-  command, the Cloudflare token recipe, an honest Alpha status, and a
-  License & terms section (per-user accounts; official-vs-repo engine).
-- Docs re-pathed from the old `appliance/` subtree to the repo root.
-
-### Added
-
-- Initial release, migrated from the `appliance/` layer of
-  `aaddrick/claude-desktop-debian` (fork), as a standalone project.
-- `install.sh` — network installer (`curl … | sudo bash`) for prod, plus `setup.sh` for clone-and-run.
-- `setup.sh` — one-command provisioning with engine auto-selection
-  (official Anthropic apt build with KVM; claude-desktop-debian build
-  with the bwrap Cowork backend otherwise), XFCE + kasmVNC session,
-  Cloudflare tunnel (manual or zero-touch API mode), XDG autostart, and
-  a doctor that fails loudly on any session port bound beyond loopback.
-- Zero-touch Cloudflare edge via a scoped API token: tunnel, ingress,
-  proxied DNS, and Access application + allow policy, non-interactively.
-- `member.sh` — multi-user lifecycle: per-member account, systemd slice
-  quotas, kasmVNC display/port, ingress hostname, autostart.
-- `storage.sh` — remote-backed storage (Google Drive / OneDrive /
-  Dropbox) mounted with a bounded rclone VFS cache.
-- `testbench/` — computer-use-substitute MCP servers: disposable
-  nested-display GUI control and an experimental QEMU-guest driver.
-- `gen-sshconfigs.sh` — managed-settings `sshConfigs` generator for
-  SSH-target mode.
-- `images/` — cloud-init bootstrap and Raspberry Pi notes.
-- BATS suite; a CI workflow running shellcheck, node --check,
-  cloud-init YAML validation, and the suite with a live Xvfb
-  end-to-end.
-- Hardware-validated on DigitalOcean Ubuntu 24.04 VPSes on BOTH
-  engines: the default official engine (Anthropic apt package,
-  /dev/kvm present, backend=kvm) and the opt-in repo engine (bwrap).
-  Each run: bare box → documented install → kasmVNC behind Cloudflare
-  Access, doctor clean including the Access-coverage check. Five
-  headless-startup bugs found and fixed during the first validation
-  (user-manager bus, kasmVNC control-user prompt, per-user TLS cert,
-  doctor listener check, nested-subdomain TLS warning). Raspberry Pi
-  remains specified but not hardware-verified.
+- The Cloudflare API token travels to `curl` via stdin config, and the
+  rclone OAuth token is written directly into the member's `0600`
+  rclone.conf — neither ever appears on argv (`/proc/*/cmdline` is
+  world-readable on a multi-user box).
+- The cloudflared connector-token unit file is locked to `0600`;
+  member homes are `chmod 700`; hostnames are validated as FQDNs; the
+  kasmVNC key is generated under `umask 077`.
+- `--access-allow` is validated before any provisioning: at least one
+  well-formed email/domain is required, and a bare PUBLIC mail-provider
+  domain (gmail.com, outlook.com, …) is a hard error — it would admit
+  every account at that provider.
+- Doctor: session ports are scanned across the full member range and a
+  wildcard bind is never reported as a healthy listener.

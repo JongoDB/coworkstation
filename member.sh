@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #===============================================================================
-# Claude appliance member management — Phase 2 (multi-user)
+# Coworkstation member management — Phase 2 (multi-user)
 #
 # Usage:
 #   sudo ./member.sh add NAME [--quota-mem 6G] [--quota-cpu 200%]
@@ -29,6 +29,26 @@ source "$cws_dir/lib/profiles/kasmvnc.sh"
 source "$cws_dir/lib/tunnel-api.sh"
 
 registry_file() { printf '%s/members.tsv' "$appliance_etc"; }
+
+# Serialize mutating commands: two concurrent `member.sh add` calls
+# could allocate the same display/port and interleave registry writes.
+# The lock fd stays open for the life of the process. No flock on the
+# system (unusual) degrades to unlocked with a warning.
+member_lock() {
+	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
+		return 0
+	fi
+	if ! command -v flock > /dev/null 2>&1; then
+		log_warn 'flock unavailable; concurrent member.sh runs may race'
+		return 0
+	fi
+	mkdir -p "$appliance_etc" || return 1
+	exec 9> "$appliance_etc/.members.lock" || return 1
+	if ! flock -w 30 9; then
+		log_err 'another member.sh invocation holds the lock'
+		return 1
+	fi
+}
 
 # --- Registry (pure text; the BATS seam) -------------------------------
 
@@ -74,7 +94,8 @@ ingress_add() {
 	local input
 	input=$(cat)
 
-	if grep -qE "hostname:[[:space:]]*$hostname\$" <<< "$input"; then
+	local host_re="${hostname//./\\.}"
+	if grep -qE "hostname:[[:space:]]*$host_re\$" <<< "$input"; then
 		printf '%s\n' "$input"
 		return 0
 	fi
@@ -147,7 +168,7 @@ install_slice_quota() {
 		mkdir -p "$dir" || return 1
 	fi
 	slice_override "$mem" "$cpu" \
-		| write_file "$dir/50-claude-appliance.conf" || return 1
+		| write_file "$dir/50-coworkstation.conf" || return 1
 	run_cmd systemctl daemon-reload
 }
 
@@ -400,10 +421,12 @@ main() {
 	case "$cmd" in
 		add)
 			require_root || return 1
+			member_lock || return 1
 			cmd_add "$name" "$mem" "$cpu"
 			;;
 		remove)
 			require_root || return 1
+			member_lock || return 1
 			cmd_remove "$name" "$keep_home" "$assume_yes"
 			;;
 		list)

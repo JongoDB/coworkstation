@@ -127,7 +127,7 @@ sudo ./setup.sh \
    amd64/arm64; else repo build (deb via this repo's apt repo) with
    `COWORK_VM_BACKEND=bwrap` exported in the session environment.
    `--engine` overrides. The chosen rule and reason are logged and stored
-   in `/etc/claude-appliance/engine.conf` for doctor to report.
+   in `/etc/coworkstation/engine.conf` for doctor to report.
 3. **Session stack**: XFCE (`xfce4 xfce4-goodies` minimal set), per the
    selected profile:
    - **kasmvnc**: install kasmvncserver deb, configure
@@ -189,7 +189,7 @@ hostname without an Access application is public.
 1. Verify the token; discover the account and the registered zone by
    walking the hostname's labels.
 2. Create-or-adopt a remotely-managed tunnel named
-   `claude-appliance` (`config_src: cloudflare` — ingress lives in
+   `coworkstation` (`config_src: cloudflare` — ingress lives in
    Cloudflare's config, not a local YAML).
 3. PUT the ingress (hostname → local kasmVNC port, 404 catch-all),
    idempotently.
@@ -242,7 +242,7 @@ sudo ./member.sh remove NAME [--keep-home] [--dry-run]
 - `add`: create Unix account (no sudo), install systemd user-slice
   override (`/etc/systemd/system/user-<uid>.slice.d/50-appliance.conf`
   with `MemoryMax`, `CPUQuota`, `TasksMax`), allocate next free kasmVNC
-  port from a registry file (`/etc/claude-appliance/members.tsv`), write
+  port from a registry file (`/etc/coworkstation/members.tsv`), write
   per-user kasmVNC service + XDG autostart, append a hostname→port entry
   to the cloudflared config ingress (one hostname per member,
   `NAME.claude.example.com`), print the Access-policy reminder (policy
@@ -384,7 +384,7 @@ installable per member, usable from Cowork/Code sessions.
 - **`docs/runbook.md`**: admin runbook — initial
   provision, member add/remove, tunnel/Access setup walkthrough,
   Guacamole gateway option, break-glass overlay procedure, backup
-  (what to back up: `/etc/claude-appliance`, member homes, NOT vm
+  (what to back up: `/etc/coworkstation`, member homes, NOT vm
   bundles), restore drill.
 
 ### Acceptance criteria

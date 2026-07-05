@@ -126,7 +126,7 @@ teardown() {
 	grep -q '^backend=bwrap$' "$APPLIANCE_ETC/engine.conf"
 	local env_file
 	env_file="$TEST_TMP/home/.config/environment.d"
-	env_file+='/60-claude-appliance.conf'
+	env_file+='/60-coworkstation.conf'
 	[[ -f $env_file ]]
 	grep -q '^COWORK_VM_BACKEND=bwrap$' "$env_file"
 }
@@ -140,7 +140,7 @@ teardown() {
 	grep -q '^engine=official$' "$APPLIANCE_ETC/engine.conf"
 	grep -q '^backend=none$' "$APPLIANCE_ETC/engine.conf"
 	# no bwrap env written for the official engine
-	[[ ! -e $TEST_TMP/home/.config/environment.d/60-claude-appliance.conf ]]
+	[[ ! -e $TEST_TMP/home/.config/environment.d/60-coworkstation.conf ]]
 }
 
 @test "install_engine: engine.conf is refreshed on re-run" {

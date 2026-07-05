@@ -199,7 +199,7 @@ kasmvnc_unit() {
 	local display="${1:-1}"
 	cat << EOF
 [Unit]
-Description=kasmVNC session (Claude appliance)
+Description=kasmVNC session (Coworkstation)
 After=network.target
 
 [Service]
@@ -255,10 +255,10 @@ profile_kasmvnc_setup_tunnel() {
 
 	log_info 'cloudflared installed. Finish the tunnel interactively:'
 	log_info '  1. cloudflared tunnel login'
-	log_info '  2. cloudflared tunnel create claude-appliance'
+	log_info '  2. cloudflared tunnel create coworkstation'
 	log_info '  3. set "tunnel:" and "credentials-file:" in'
 	log_info '     /etc/cloudflared/config.yml'
-	log_info "  4. cloudflared tunnel route dns claude-appliance $hostname"
+	log_info "  4. cloudflared tunnel route dns coworkstation $hostname"
 	log_info '  5. cloudflared service install && systemctl start cloudflared'
 	log_info '  6. protect the hostname with a Cloudflare Access policy'
 }
@@ -267,7 +267,7 @@ cloudflared_config() {
 	local hostname="$1"
 	local port="$2"
 	cat << EOF
-# Claude appliance tunnel. Set "tunnel" and "credentials-file" after
+# Coworkstation tunnel. Set "tunnel" and "credentials-file" after
 # running: cloudflared tunnel login && cloudflared tunnel create ...
 # tunnel: <TUNNEL-UUID>
 # credentials-file: /root/.cloudflared/<TUNNEL-UUID>.json

@@ -45,7 +45,7 @@ setup() {
 			'GET /zones/zone-1')
 				printf '{"success":true,"result":{"id":"zone-1","name":"example.com","account":{"id":"acct-1"}}}'
 				;;
-			'GET /accounts/acct-1/cfd_tunnel?name=claude-appliance&is_deleted=false')
+			'GET /accounts/acct-1/cfd_tunnel?name=coworkstation&is_deleted=false')
 				printf '{"success":true,"result":[]}'
 				;;
 			'POST /accounts/acct-1/cfd_tunnel'*)
@@ -158,7 +158,7 @@ teardown() {
 
 @test "cf_tunnel_ensure: creates when absent" {
 	local id
-	id=$(cf_tunnel_ensure acct-1 claude-appliance)
+	id=$(cf_tunnel_ensure acct-1 coworkstation)
 	[[ $id == 'tun-1' ]]
 	grep -q 'POST /accounts/acct-1/cfd_tunnel' "$CALL_LOG"
 }
@@ -169,7 +169,7 @@ teardown() {
 		printf '{"success":true,"result":[{"id":"tun-existing"}]}'
 	}
 	local id
-	id=$(cf_tunnel_ensure acct-1 claude-appliance)
+	id=$(cf_tunnel_ensure acct-1 coworkstation)
 	[[ $id == 'tun-existing' ]]
 	! grep -q '^POST' "$CALL_LOG"
 }
@@ -376,4 +376,32 @@ teardown() {
 	run cf_access_ensure_app acct-1 cws.example.com 'same@example.com'
 	[[ $status -eq 0 ]]
 	! grep -qE '^(PUT|POST) .*policies' "$CALL_LOG"
+}
+
+# =============================================================================
+# validate_access_allow (pre-provisioning gate, pure bash)
+# =============================================================================
+
+@test "validate_access_allow: accepts emails and org domains" {
+	validate_access_allow 'alice@example.com'
+	validate_access_allow ' alice@example.com , example.com '
+	validate_access_allow 'corp.example.co.uk'
+}
+
+@test "validate_access_allow: rejects a PUBLIC mail provider domain" {
+	run validate_access_allow 'gmail.com'
+	[[ $status -ne 0 ]]
+	[[ $output == *'PUBLIC mail provider'* ]]
+	# ...but a specific address AT that provider is fine
+	validate_access_allow 'someone@gmail.com'
+}
+
+@test "validate_access_allow: rejects malformed and empty input" {
+	run validate_access_allow 'not an email'
+	[[ $status -ne 0 ]]
+	run validate_access_allow '@nope.com'
+	[[ $status -ne 0 ]]
+	run validate_access_allow ' , ,, '
+	[[ $status -ne 0 ]]
+	[[ $output == *'no usable entries'* ]]
 }

@@ -24,6 +24,7 @@ set -u
 repo='jongodb/coworkstation'
 ref="${COWORKSTATION_REF:-main}"
 dir="${COWORKSTATION_DIR:-/opt/coworkstation}"
+pin_sha="${COWORKSTATION_SHA:-}"
 
 log() { printf '[coworkstation-install] %s\n' "$*"; }
 die() { printf '[coworkstation-install] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -31,6 +32,19 @@ die() { printf '[coworkstation-install] ERROR: %s\n' "$*" >&2; exit 1; }
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
 	die 'run as root (pipe into: sudo bash)'
 fi
+
+# $dir is rm -rf'd below; refuse values that could nuke the system if a
+# stray COWORKSTATION_DIR leaks in from the environment.
+case "$dir" in
+	/|/bin|/boot|/dev|/etc|/home|/lib|/proc|/root|/run|/sbin|/srv|\
+	/sys|/tmp|/usr|/var|'')
+		die "refusing to install into '$dir'"
+		;;
+	/*) ;;
+	*)
+		die "COWORKSTATION_DIR must be an absolute path (got '$dir')"
+		;;
+esac
 
 for tool in curl tar; do
 	command -v "$tool" > /dev/null 2>&1 || die "missing dependency: $tool"
@@ -62,6 +76,23 @@ else
 		|| die 'tarball download/extract failed'
 fi
 
+# Supply-chain pin: with COWORKSTATION_SHA set, the checked-out commit
+# must match exactly — a moved tag or tampered branch fails loudly
+# instead of running whatever arrived. (Tarball path can't verify.)
+if [[ -n $pin_sha ]]; then
+	if [[ ! -d $dir/.git ]]; then
+		die 'COWORKSTATION_SHA requires git (tarball cannot verify)'
+	fi
+	got=$(git -C "$dir" rev-parse HEAD) || die 'rev-parse failed'
+	if [[ $got != "$pin_sha" ]]; then
+		die "checkout is $got, expected $pin_sha — refusing to run"
+	fi
+	log "verified checkout matches pinned SHA"
+fi
+
+if [[ ! -f $dir/setup.sh ]]; then
+	die "download looks wrong: $dir/setup.sh is missing"
+fi
 chmod +x "$dir"/*.sh "$dir"/testbench/*.sh 2> /dev/null || true
 
 log "running setup.sh"

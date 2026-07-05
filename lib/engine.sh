@@ -20,7 +20,7 @@
 #   engine_reason   one-line human explanation, stored for the doctor
 #===============================================================================
 
-appliance_etc="${APPLIANCE_ETC:-/etc/claude-appliance}"
+appliance_etc="${APPLIANCE_ETC:-/etc/coworkstation}"
 
 # Decide which engine to install. $1 is the --engine flag (auto by
 # default). Pure decision logic — no side effects — so BATS can drive
@@ -94,8 +94,11 @@ _engine_install_official() {
 	if [[ ! -f $keyring ]]; then
 		run_cmd curl -fsSLo "$keyring" "$key_url" || return 1
 	fi
+	# Force: this list file is ours, and an --engine switch must
+	# retarget apt rather than silently keep the previous source.
 	printf 'deb [arch=amd64,arm64 signed-by=%s] %s stable main' \
-		"$keyring" "$repo_url" | write_file "$list" || return 1
+		"$keyring" "$repo_url" \
+		| appliance_force=1 write_file "$list" || return 1
 	run_cmd apt-get update || return 1
 	pkg_install claude-desktop
 }
@@ -116,7 +119,8 @@ _engine_install_repo() {
 		fi
 	fi
 	printf 'deb [signed-by=%s arch=amd64,arm64] %s stable main' \
-		"$keyring" "$base_url" | write_file "$list" || return 1
+		"$keyring" "$base_url" \
+		| appliance_force=1 write_file "$list" || return 1
 	run_cmd apt-get update || return 1
 	pkg_install claude-desktop
 }
@@ -164,7 +168,7 @@ _engine_write_backend_env() {
 	local home
 	home=$(user_home "$user") || return 1
 	local env_dir="$home/.config/environment.d"
-	local env_file="$env_dir/60-claude-appliance.conf"
+	local env_file="$env_dir/60-coworkstation.conf"
 
 	run_as_user "$user" mkdir -p "$env_dir" || return 1
 	if [[ -e $env_file && ${appliance_force:-0} -ne 1 ]]; then

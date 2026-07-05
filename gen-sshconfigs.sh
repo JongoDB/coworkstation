@@ -24,7 +24,7 @@ cws_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib/common.sh
 source "$cws_dir/lib/common.sh"
 
-appliance_etc="${APPLIANCE_ETC:-/etc/claude-appliance}"
+appliance_etc="${APPLIANCE_ETC:-/etc/coworkstation}"
 
 # One sshConfigs entry as JSON. Args: id name ssh_host start_dir
 ssh_entry() {

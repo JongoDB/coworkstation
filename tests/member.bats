@@ -135,7 +135,7 @@ EOF
 	run_cmd() { :; }
 	install_slice_quota alice 4G 150%
 	local conf="$APPLIANCE_SLICE_DIR/user-1042.slice.d"
-	conf+='/50-claude-appliance.conf'
+	conf+='/50-coworkstation.conf'
 	[[ -f $conf ]]
 	grep -q 'MemoryMax=4G' "$conf"
 	grep -q 'CPUQuota=150%' "$conf"

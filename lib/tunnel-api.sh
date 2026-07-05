@@ -16,7 +16,7 @@
 # Sourced globals: cf_api_token (set by tunnel_api_load_token).
 #===============================================================================
 
-appliance_etc="${APPLIANCE_ETC:-/etc/claude-appliance}"
+appliance_etc="${APPLIANCE_ETC:-/etc/coworkstation}"
 
 cf_api_base='https://api.cloudflare.com/client/v4'
 
@@ -79,8 +79,12 @@ tunnel_api_load_token() {
 # /accounts — Cloudflare returns an empty array (success:true, result:[]),
 # not an error — so this yields empty for exactly the tokens the README
 # tells users to create. cf_account_for_zone is the robust primary.
+# (All helpers capture cf_call before jq: piping into jq would mask a
+# transport failure as an empty result.)
 cf_account_id() {
-	cf_call GET /accounts | jq -r '.[0].id // empty'
+	local resp
+	resp=$(cf_call GET /accounts) || return 1
+	jq -r '.[0].id // empty' <<< "$resp"
 }
 
 # Account that owns a zone. cf_call has already unwrapped .result, so the
@@ -89,7 +93,9 @@ cf_account_id() {
 # hostname lives in — no account-list permission required.
 cf_account_for_zone() {
 	local zone_id="$1"
-	cf_call GET "/zones/$zone_id" | jq -r '.account.id // empty'
+	local resp
+	resp=$(cf_call GET "/zones/$zone_id") || return 1
+	jq -r '.account.id // empty' <<< "$resp"
 }
 
 # Walk the hostname right-to-left until a zone matches.
@@ -97,10 +103,10 @@ cf_account_for_zone() {
 cf_zone_for_hostname() {
 	local hostname="$1"
 	local candidate="$hostname"
-	local zone_id
+	local zone_id resp
 	while [[ $candidate == *.* ]]; do
-		zone_id=$(cf_call GET "/zones?name=$candidate" \
-			| jq -r '.[0].id // empty') || return 1
+		resp=$(cf_call GET "/zones?name=$candidate") || return 1
+		zone_id=$(jq -r '.[0].id // empty' <<< "$resp")
 		if [[ -n $zone_id ]]; then
 			printf '%s %s' "$zone_id" "$candidate"
 			return 0
@@ -140,17 +146,21 @@ cf_tunnel_ensure() {
 cf_tunnel_token() {
 	local account="$1"
 	local tunnel="$2"
-	cf_call GET "/accounts/$account/cfd_tunnel/$tunnel/token" \
-		| jq -r '.'
+	local resp
+	resp=$(cf_call GET "/accounts/$account/cfd_tunnel/$tunnel/token") \
+		|| return 1
+	jq -r '.' <<< "$resp"
 }
 
 # Current remote ingress array (JSON). Empty array when unset.
 cf_tunnel_get_ingress() {
 	local account="$1"
 	local tunnel="$2"
-	cf_call GET \
-		"/accounts/$account/cfd_tunnel/$tunnel/configurations" \
-		| jq '.config.ingress // []'
+	local resp
+	resp=$(cf_call GET \
+		"/accounts/$account/cfd_tunnel/$tunnel/configurations") \
+		|| return 1
+	jq '.config.ingress // []' <<< "$resp"
 }
 
 # Pure transform: insert hostname->port before the catch-all, keeping
@@ -196,10 +206,11 @@ cf_dns_ensure_cname() {
 	local zone="$1"
 	local hostname="$2"
 	local tunnel="$3"
-	local existing
-	existing=$(cf_call GET \
-		"/zones/$zone/dns_records?type=CNAME&name=$hostname" \
-		| jq -r '.[0].id // empty') || return 1
+	local resp existing
+	resp=$(cf_call GET \
+		"/zones/$zone/dns_records?type=CNAME&name=$hostname") \
+		|| return 1
+	existing=$(jq -r '.[0].id // empty' <<< "$resp")
 	if [[ -n $existing ]]; then
 		log_info "DNS record for $hostname already present"
 		return 0
@@ -213,12 +224,66 @@ cf_dns_ensure_cname() {
 cf_dns_remove_cname() {
 	local zone="$1"
 	local hostname="$2"
-	local id
-	id=$(cf_call GET \
-		"/zones/$zone/dns_records?type=CNAME&name=$hostname" \
-		| jq -r '.[0].id // empty') || return 1
+	local resp id
+	resp=$(cf_call GET \
+		"/zones/$zone/dns_records?type=CNAME&name=$hostname") \
+		|| return 1
+	id=$(jq -r '.[0].id // empty' <<< "$resp")
 	[[ -z $id ]] && return 0
 	cf_call DELETE "/zones/$zone/dns_records/$id" > /dev/null
+}
+
+# Validate --access-allow BEFORE any provisioning (pure bash: runs
+# before jq is installed on a fresh box). Rules:
+#   - at least one well-formed entry must survive parsing (an empty
+#     include array would provision a policy that admits no one — or
+#     worse, be rejected mid-provision after the tunnel exists);
+#   - each entry is an email (user@domain.tld) or a bare domain;
+#   - a PUBLIC mail provider as a bare domain (gmail.com, ...) would
+#     admit every account at that provider — hard error, since it is
+#     never what an operator means.
+validate_access_allow() {
+	local allow_csv="$1"
+	local entry ok=0
+	local -a parts
+	IFS=',' read -ra parts <<< "$allow_csv"
+	for entry in "${parts[@]}"; do
+		# trim surrounding whitespace
+		entry="${entry#"${entry%%[![:space:]]*}"}"
+		entry="${entry%"${entry##*[![:space:]]}"}"
+		[[ -z $entry ]] && continue
+		if [[ $entry == *@* ]]; then
+			if [[ ! $entry =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]
+			then
+				log_err "--access-allow entry '$entry' is not a" \
+					'valid email'
+				return 1
+			fi
+		else
+			if [[ ! $entry =~ ^[a-z0-9]([a-z0-9-]*)(\.[a-z0-9]([a-z0-9-]*))+$ ]]
+			then
+				log_err "--access-allow entry '$entry' is not a" \
+					'valid email domain'
+				return 1
+			fi
+			case "$entry" in
+				gmail.com|googlemail.com|outlook.com|hotmail.com|\
+				live.com|yahoo.com|icloud.com|me.com|aol.com|\
+				proton.me|protonmail.com|gmx.com|mail.com)
+					log_err "--access-allow domain '$entry' is a" \
+						'PUBLIC mail provider: it would admit EVERY' \
+						"account there. List emails instead:" \
+						"you@$entry"
+					return 1
+					;;
+			esac
+		fi
+		ok=1
+	done
+	if [[ $ok -ne 1 ]]; then
+		log_err '--access-allow contains no usable entries'
+		return 1
+	fi
 }
 
 # Build the Access policy include array from a comma list where each
@@ -239,15 +304,16 @@ cf_access_ensure_app() {
 	local account="$1"
 	local hostname="$2"
 	local allow_csv="$3"
-	local app_id
-	app_id=$(cf_call GET "/accounts/$account/access/apps" \
-		| jq -r --arg d "$hostname" \
-			'[.[] | select(.domain == $d)][0].id // empty') \
+	local apps_resp app_id
+	apps_resp=$(cf_call GET "/accounts/$account/access/apps") \
 		|| return 1
+	app_id=$(jq -r --arg d "$hostname" \
+		'[.[] | select(.domain == $d)][0].id // empty' \
+		<<< "$apps_resp")
 	if [[ -z $app_id ]]; then
 		app_id=$(cf_call POST "/accounts/$account/access/apps" \
 			"$(jq -n --arg d "$hostname" \
-				'{name: ("Claude appliance " + $d),
+				'{name: ("Coworkstation " + $d),
 				  domain: $d, type: "self_hosted",
 				  session_duration: "24h"}')" \
 			| jq -r '.id') || return 1
@@ -266,7 +332,7 @@ cf_access_ensure_app() {
 		cf_call POST \
 			"/accounts/$account/access/apps/$app_id/policies" \
 			"$(jq -n --argjson inc "$want" \
-				'{name: "appliance members", decision: "allow",
+				'{name: "coworkstation members", decision: "allow",
 				  include: $inc}')" > /dev/null || return 1
 		log_info "created allow policy ($allow_csv)"
 		return 0
@@ -281,7 +347,7 @@ cf_access_ensure_app() {
 		cf_call PUT \
 			"/accounts/$account/access/apps/$app_id/policies/$policy_id" \
 			"$(jq -n --argjson inc "$want" \
-				'{name: "appliance members", decision: "allow",
+				'{name: "coworkstation members", decision: "allow",
 				  include: $inc}')" > /dev/null || return 1
 		log_info "updated allow policy to match ($allow_csv)"
 	fi
@@ -290,11 +356,10 @@ cf_access_ensure_app() {
 cf_access_remove_app() {
 	local account="$1"
 	local hostname="$2"
-	local app_id
-	app_id=$(cf_call GET "/accounts/$account/access/apps" \
-		| jq -r --arg d "$hostname" \
-			'[.[] | select(.domain == $d)][0].id // empty') \
-		|| return 1
+	local resp app_id
+	resp=$(cf_call GET "/accounts/$account/access/apps") || return 1
+	app_id=$(jq -r --arg d "$hostname" \
+		'[.[] | select(.domain == $d)][0].id // empty' <<< "$resp")
 	[[ -z $app_id ]] && return 0
 	cf_call DELETE "/accounts/$account/access/apps/$app_id" \
 		> /dev/null
@@ -337,7 +402,7 @@ tunnel_api_provision() {
 	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
 		printf 'DRY-RUN: cloudflare api provisioning plan:\n'
 		printf '    verify token from %s\n' "$token_file"
-		printf '    ensure tunnel "claude-appliance" (remote-managed)\n'
+		printf '    ensure tunnel "coworkstation" (remote-managed)\n'
 		printf '    ingress: %s -> http://127.0.0.1:%s\n' \
 			"$hostname" "$port"
 		printf '    proxied CNAME %s -> <tunnel>.cfargotunnel.com\n' \
@@ -370,7 +435,7 @@ tunnel_api_provision() {
 	fi
 
 	local tunnel
-	tunnel=$(cf_tunnel_ensure "$account" 'claude-appliance') \
+	tunnel=$(cf_tunnel_ensure "$account" 'coworkstation') \
 		|| return 1
 
 	local ingress

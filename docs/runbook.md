@@ -47,14 +47,14 @@ Access login, sign into Claude, run `./setup.sh doctor`.
    - engine auto-selection: official apt build where `/dev/kvm`
      exists; this repo's build with the bwrap Cowork backend where it
      doesn't. Force with `--engine`. The decision is recorded in
-     `/etc/claude-appliance/engine.conf`.
+     `/etc/coworkstation/engine.conf`.
    - add `--dry-run` first if you want to review the full plan.
 3. Finish the tunnel (interactive, one time):
    ```bash
    cloudflared tunnel login
-   cloudflared tunnel create claude-appliance
+   cloudflared tunnel create coworkstation
    # set "tunnel:" + "credentials-file:" in /etc/cloudflared/config.yml
-   cloudflared tunnel route dns claude-appliance claude.example.com
+   cloudflared tunnel route dns coworkstation claude.example.com
    cloudflared service install && systemctl start cloudflared
    ```
 4. In Cloudflare Zero Trust, create an **Access application** for the
@@ -162,7 +162,7 @@ is healthy again if clientless-only is your policy.
 
 Back up:
 
-- `/etc/claude-appliance/` (engine.conf, appliance.conf, members.tsv)
+- `/etc/coworkstation/` (engine.conf, appliance.conf, members.tsv)
 - `/etc/cloudflared/` (tunnel config + credentials)
 - member homes (`/home/*`) — contains Claude config, MCP configs,
   keyrings
@@ -173,7 +173,7 @@ wiping it is the documented recovery for daemon startup failures),
 `~/.config/Claude/claude-code-vm/` (CLI cache), vm-bench guest
 overlays (disposable by design).
 
-Restore drill: fresh box → `setup.sh` → restore `/etc/claude-appliance`
+Restore drill: fresh box → `setup.sh` → restore `/etc/coworkstation`
 + `/etc/cloudflared` → `member.sh add` each member (idempotent over
 restored homes: existing accounts are adopted, configs kept) →
 doctor to zero FAILs.

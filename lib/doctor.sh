@@ -9,7 +9,7 @@
 # run_appliance_doctor entry point gathers the live inputs.
 #===============================================================================
 
-appliance_etc="${APPLIANCE_ETC:-/etc/claude-appliance}"
+appliance_etc="${APPLIANCE_ETC:-/etc/coworkstation}"
 
 _apl_failures=0
 
@@ -184,8 +184,17 @@ apl_check_tunnel_service() {
 # that false-green).
 apl_check_session_layer() {
 	local user="$1"
-	local ss_output="${2-$(command -v ss > /dev/null 2>&1 \
-		&& ss -Hltn 2> /dev/null)}"
+	local ss_output
+	if [[ $# -ge 2 ]]; then
+		ss_output="$2"
+	elif command -v ss > /dev/null 2>&1; then
+		ss_output=$(ss -Hltn 2> /dev/null)
+	else
+		# no ss: we cannot distinguish "not listening" from "cannot
+		# look" — warn instead of reporting a spurious FAIL.
+		_apl_warn 'ss unavailable; cannot verify the session listener'
+		return
+	fi
 	local home
 	home=$(getent passwd "$user" | cut -d: -f6)
 
@@ -257,7 +266,7 @@ run_appliance_doctor() {
 	local user="$1"
 	_apl_failures=0
 
-	printf '== Claude appliance doctor ==\n'
+	printf '== coworkstation doctor ==\n'
 	apl_check_engine_conf "$appliance_etc/engine.conf"
 	apl_check_engine_installed
 	apl_check_session_layer "$user"
