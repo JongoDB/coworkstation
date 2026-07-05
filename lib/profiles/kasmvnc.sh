@@ -16,10 +16,30 @@ appliance_kasm_base_port=8443
 kasmvnc_release_base='https://github.com/kasmtech/KasmVNC/releases/download'
 kasmvnc_version="${APPLIANCE_KASMVNC_VERSION:-1.3.3}"
 
+# kasmVNC publishes a per-codename .deb but lags brand-new distro
+# releases, so the host codename may have no matching asset (e.g. Debian
+# 13 "trixie" 404s). Map the host codename to the newest kasmVNC-built
+# codename in the same family; a bookworm/noble build runs fine on the
+# next release. An unknown codename is returned as-is so the download's
+# own check surfaces a clear error.
+kasmvnc_codename() {
+	case "$1" in
+		# Ubuntu builds kasmVNC ships
+		bionic|focal|jammy|noble) printf '%s' "$1" ;;
+		# newer Ubuntu -> newest shipped LTS
+		oracular|plucky|questing) printf 'noble' ;;
+		# Debian builds kasmVNC ships
+		buster|bullseye|bookworm) printf '%s' "$1" ;;
+		# newer Debian -> newest shipped stable
+		trixie|forky|sid) printf 'bookworm' ;;
+		*) printf '%s' "$1" ;;
+	esac
+}
+
 # Compose the release .deb URL for this distro/arch.
 kasmvnc_deb_url() {
 	local codename arch
-	codename=$(appliance_distro_codename)
+	codename=$(kasmvnc_codename "$(appliance_distro_codename)")
 	arch=$(appliance_arch)
 	if [[ -z $codename ]]; then
 		log_err 'cannot determine distro codename for kasmVNC deb'
@@ -39,7 +59,13 @@ profile_kasmvnc_install_packages() {
 		|| dpkg -s kasmvncserver > /dev/null 2>&1; then
 		log_info 'kasmvncserver already installed'
 	else
-		run_cmd curl -fsSLo "$tmp_deb" "$url" || return 1
+		if ! run_cmd curl -fsSLo "$tmp_deb" "$url"; then
+			log_err "kasmVNC $kasmvnc_version has no .deb at $url"
+			log_err '  (this distro/arch may be newer than kasmVNC' \
+				'ships; set APPLIANCE_KASMVNC_VERSION to a release' \
+				'that covers your codename, or use --profile xrdp)'
+			return 1
+		fi
 		pkg_install "$tmp_deb" || return 1
 		run_cmd rm -f "$tmp_deb"
 	fi

@@ -127,3 +127,42 @@ teardown() {
 	[[ $status -eq 0 ]]
 	[[ $output == *'cert already present'* ]]
 }
+
+# =============================================================================
+# kasmvnc_codename mapping + deb URL (item-6 fix: new distros must resolve)
+# =============================================================================
+
+@test "kasmvnc_codename: shipped codenames pass through" {
+	[[ $(kasmvnc_codename noble) == noble ]]
+	[[ $(kasmvnc_codename jammy) == jammy ]]
+	[[ $(kasmvnc_codename bookworm) == bookworm ]]
+}
+
+@test "kasmvnc_codename: newer distros map to a shipped build" {
+	# Debian 13 trixie has no kasmVNC deb -> bookworm (the 404 we hit live)
+	[[ $(kasmvnc_codename trixie) == bookworm ]]
+	[[ $(kasmvnc_codename sid) == bookworm ]]
+	# newer Ubuntu -> noble
+	[[ $(kasmvnc_codename plucky) == noble ]]
+}
+
+@test "kasmvnc_deb_url: trixie host resolves to the bookworm asset" {
+	appliance_distro_codename() { printf 'trixie'; }
+	appliance_arch() { printf 'amd64'; }
+	local url
+	url=$(kasmvnc_deb_url)
+	[[ $url == *'kasmvncserver_bookworm_1.3.3_amd64.deb'* ]]
+	[[ $url != *trixie* ]]
+}
+
+@test "install_packages: a 404 download gives an actionable error" {
+	appliance_distro_codename() { printf 'noble'; }
+	appliance_arch() { printf 'amd64'; }
+	command() { return 1; }          # kasmvncserver not present
+	dpkg() { return 1; }
+	run_cmd() { return 1; }           # simulate the curl download failing
+	run profile_kasmvnc_install_packages
+	[[ $status -ne 0 ]]
+	[[ $output == *'no .deb at'* ]]
+	[[ $output == *'--profile xrdp'* ]]
+}

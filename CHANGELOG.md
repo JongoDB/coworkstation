@@ -97,6 +97,12 @@ fixes and hardening from the from-zero audit and two live validations.
   "token failed verification").
 - `member.sh add` provisions the kasmVNC cert and control user, so an
   added member's session actually starts.
+- kasmVNC install no longer 404s on a distro newer than kasmVNC ships
+  a build for: the host codename maps to the nearest shipped build
+  (Debian 13 trixie -> bookworm, newer Ubuntu -> noble), and a genuine
+  missing-asset download fails with an actionable message pointing at
+  `APPLIANCE_KASMVNC_VERSION` / `--profile xrdp`. Found by installing on
+  a live Debian 13 droplet.
 - A forgotten flag value no longer hangs any argument parser
   (`require_value` guard everywhere).
 - `member.sh`, `storage.sh`, `gen-sshconfigs.sh`, `testbench/setup.sh`
