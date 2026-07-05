@@ -117,7 +117,15 @@ shellcheck -x install.sh setup.sh member.sh storage.sh gen-sshconfigs.sh lib/*.s
 
 ## Status
 
-**Alpha.** Hardware-validated end-to-end on x86 VPSes, both engines: bare Ubuntu 24.04 → the documented install → kasmVNC behind Cloudflare Access, doctor clean (including the Access-coverage check) — once on the **default official engine with `/dev/kvm`** (Anthropic's apt package, `backend=kvm`), and once on the opt-in **repo engine + bwrap**. Not yet verified: the Cowork VM feature exercised end-to-end *inside* a session (install-level validation only), and Raspberry Pi (Tier 3). The BATS suite validates script logic and dry-run plans, not Claude Desktop itself at scale.
+**Alpha.** Hardware-validated end-to-end on **x86-64** VPSes, both engines: bare Ubuntu 24.04 → the documented install → kasmVNC behind Cloudflare Access, doctor clean (including the Access-coverage check) — once on the **default official engine with `/dev/kvm`** (Anthropic's apt package, `backend=kvm`), and once on the opt-in **repo engine + bwrap**. A full smoke test also validated `member.sh`, `storage.sh`, reboot persistence, and re-run idempotency live, plus a from-zero install on **Debian 13**.
+
+**Not yet verified:**
+
+- **arm64 (Raspberry Pi and other ARM hosts) — untested.** The code path (arch detection → arm64 `.deb`) exists and unit tests cover it, but no arm64 hardware has run the install. Treat arm64 as unvalidated until someone confirms it on a Pi 5 / Hetzner CAX.
+- The Cowork **VM feature exercised inside a session** (install-level validation only — no one has driven an actual Cowork VM in the browser yet).
+- A **live cloud-drive mount** (the `storage.sh` config + unit are validated; mounting a real Drive needs a real OAuth token).
+
+The BATS suite validates script logic and dry-run plans, not Claude Desktop itself at scale.
 
 ## License & terms
 

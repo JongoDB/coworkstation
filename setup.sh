@@ -303,6 +303,18 @@ main() {
 		&& $tunnel_mode == 'manual' ]]; then
 		log_info '  - finish the cloudflared tunnel steps printed above'
 	fi
+	log_info 'configure more later (each is idempotent and re-runnable):'
+	log_info "  - cloud storage:  sudo ./storage.sh add --user $user \\"
+	log_info '                      --provider gdrive|onedrive|dropbox' \
+		'--name drive'
+	log_info '                    (prompts for an rclone token; remove/list' \
+		'with the same tool)'
+	log_info '  - add a teammate: sudo ./member.sh add NAME' \
+		'(read the terms note first)'
+	log_info "  - SSH-target:     ./gen-sshconfigs.sh --host" \
+		"${hostname:-<hostname>} --per-member"
+	log_info '  - change engine/profile: re-run setup.sh with' \
+		'--engine/--profile (keeps existing config unless --force)'
 }
 
 # Only run when executed, so the BATS suite can source the functions.
