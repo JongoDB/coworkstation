@@ -165,6 +165,67 @@ EOF
 	[[ $output == *'no session provisioned'* ]]
 }
 
+@test "fleet_reclaim: off by default, says how to enable" {
+	run fleet_reclaim
+	[[ $status -eq 0 ]]
+	[[ $output == *'idle reclaim is off'* ]]
+}
+
+@test "fleet_reclaim: stops only cold sessions, records, spares live" {
+	printf 'idle_hours=2\n' > "$APPLIANCE_ETC/reclaim.conf"
+	fleet_users() { printf 'cold\ncold2\nfresh\n'; }
+	user_systemctl() {
+		if [[ $2 == 'is-active' ]]; then printf 'active\n'; return 0; fi
+		printf '%s %s\n' "$1" "$2" >> "$TEST_TMP/stopped"
+	}
+	fleet_user_port() { printf '8443'; }
+	fleet_port_clients() { printf '0'; }
+	fleet_last_activity() {
+		case "$1" in
+			fresh) date +%s ;;
+			*) printf '1' ;;
+		esac
+	}
+	run fleet_reclaim
+	[[ $status -eq 0 ]]
+	[[ $output == *'reclaimed: cold'* ]]
+	[[ $output == *'reclaimed: cold2'* ]]
+	[[ $output != *'reclaimed: fresh'* ]]
+	grep -q 'cold stop' "$TEST_TMP/stopped"
+	grep -q $'session-reclaim\tcold' "$APPLIANCE_ETC/audit.log"
+}
+
+@test "fleet_reclaim: live connections spare an idle-looking session" {
+	printf 'idle_hours=2\n' > "$APPLIANCE_ETC/reclaim.conf"
+	fleet_users() { printf 'busy\n'; }
+	user_systemctl() {
+		if [[ $2 == 'is-active' ]]; then printf 'active\n'; return 0; fi
+		printf 'STOPPED\n' >> "$TEST_TMP/stopped2"
+	}
+	fleet_user_port() { printf '8443'; }
+	fleet_port_clients() { printf '2'; }
+	fleet_last_activity() { printf '1'; }
+	run fleet_reclaim
+	[[ $status -eq 0 ]]
+	[[ ! -f $TEST_TMP/stopped2 ]]
+}
+
+@test "fleet_reclaim: dry-run reports and touches nothing" {
+	printf 'idle_hours=2\n' > "$APPLIANCE_ETC/reclaim.conf"
+	fleet_users() { printf 'cold\n'; }
+	user_systemctl() {
+		if [[ $2 == 'is-active' ]]; then printf 'active\n'; return 0; fi
+		printf 'STOPPED\n' >> "$TEST_TMP/stopped3"
+	}
+	fleet_user_port() { printf '8443'; }
+	fleet_port_clients() { printf '0'; }
+	fleet_last_activity() { printf '1'; }
+	run fleet_reclaim dry-run
+	[[ $status -eq 0 ]]
+	[[ $output == *'would reclaim: cold'* ]]
+	[[ ! -f $TEST_TMP/stopped3 ]]
+}
+
 @test "fleet_audit_access: manual mode points at the dashboard" {
 	tunnel_conf_get() { printf 'manual'; }
 	run fleet_audit_access 5

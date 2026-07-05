@@ -173,6 +173,7 @@ chmod +x cws-client && ./cws-client mount ~/projects/app you@cws.example.com
 | **Remote storage** | `cws storage add` mounts Google Drive / OneDrive / Dropbox with a bounded cache, so the box stays small |
 | **Doctor** | `cws doctor` — verifies a live loopback listener, flags any session port bound beyond loopback, and **checks every tunnel hostname has an Access policy** |
 | **Fleet management** | `cws sessions` — who's up, clients attached, plus remote `stop\|start\|restart USER` (every action logged); `cws usage` — per-member Claude token report from local logs (nothing leaves the box); `cws audit` — Access login history, session events, operator actions; `cws devices` — every device that touched a member's bridge, with the Access identity that used it |
+| **Idle reclaim (opt-in)** | `cws reclaim` stops sessions with no clients *and* no activity for `idle_hours` (homes persist, actions logged, `--dry-run` to preview) — set it in `/etc/coworkstation/reclaim.conf` and cron it |
 
 ## Signing in
 

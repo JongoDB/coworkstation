@@ -191,6 +191,18 @@ dropdown; sessions run on the appliance with connectors, plugins, and
 MCP intact. Tailscale SSH or ordinary keys both work — the entry is
 plain `user@host`.
 
+## Idle reclaim (optional)
+
+Stop desktops nobody is using — both signals must be cold: no
+established client connections and no bridge activity inside the
+window. Homes persist; `cws sessions start USER` brings one back.
+
+```bash
+printf 'idle_hours=8\n' | sudo tee /etc/coworkstation/reclaim.conf
+sudo cws reclaim --dry-run          # preview
+# cron it (root): 17 * * * * /usr/local/bin/cws reclaim
+```
+
 ## Break-glass access
 
 If the tunnel or IdP is down: `sudo tailscale up --ssh` (overlay

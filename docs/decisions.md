@@ -52,7 +52,15 @@ P2-F0..P2-F9).
        a registry per request (cookie id, Access identity, UA,
        first/last seen, hits; 0600, capped at 100, best-effort);
        `cws devices` renders it fleet-wide.
-     - **Phase 3b (next): session lifecycle.** Imitate the verified
+     - **Phase 3b (idle reclaim SHIPPED; rest next): session
+       lifecycle.** `cws reclaim` stops sessions cold on BOTH
+       signals — no established client connections AND no bridge
+       activity within `idle_hours` (`reclaim.conf`, default 0 =
+       off) — homes persist, every reclaim is recorded, `--dry-run`
+       previews; run it from cron/a timer. Remaining: keepalive
+       countdown UX, dormant-then-archive step, per-member policy
+       overrides, multi-display concurrent sessions. Imitate the
+       verified
        blueprint: Kasm's create/status/keepalive/destroy with policy
        in per-member config (keepalive expiration + absolute session
        time limit), Coder's Running/Stopped(-home-persists)/Deleted

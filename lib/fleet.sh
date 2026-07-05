@@ -120,6 +120,87 @@ fleet_usage_scan() {
 			| @tsv'
 }
 
+# Idle reclaim (ADR-008 phase 3b), the verified-blueprint version:
+# a session is reclaimable only when BOTH signals are cold — no
+# established client connections (the WorkSpaces signal) AND no
+# bridge activity inside the idle window (the Coder signal) —
+# because connection-presence alone under-reclaims (P3-F6).
+# Reclaim = stop the kasmVNC unit; /home persists (Coder's
+# "Stopped", not "Deleted" — offboarding stays a human decision via
+# member remove). Opt-in: idle_hours=0 (the default) disables it.
+fleet_reclaim_idle_hours() {
+	local conf="${appliance_etc:-/etc/coworkstation}/reclaim.conf"
+	local v=''
+	if [[ -r $conf ]]; then
+		v=$(grep -m1 '^idle_hours=' "$conf" | cut -d= -f2)
+	fi
+	if [[ ! $v =~ ^[0-9]+$ ]]; then
+		v=0
+	fi
+	printf '%s' "$v"
+}
+
+# Newest activity we can see for a user, as epoch seconds (0 = none):
+# bridge device hits and the latest shared frame both count.
+fleet_last_activity() {
+	local user="$1"
+	local home
+	home=$(user_home "$user" 2> /dev/null) || { printf '0'; return 0; }
+	local newest=0 t f
+	f="$home/.config/cws-bridge/devices.json"
+	if [[ -s $f ]]; then
+		t=$(jq -r '[.[].lastSeen // 0] | max / 1000 | floor' "$f" \
+			2> /dev/null) || t=0
+		[[ $t =~ ^[0-9]+$ && $t -gt $newest ]] && newest=$t
+	fi
+	local uid run
+	uid=$(id -u "$user" 2> /dev/null) || uid=''
+	run="/run/user/$uid/cws-bridge"
+	if [[ -f $run/latest.meta ]]; then
+		t=$(stat -c %Y "$run/latest.meta" 2> /dev/null) || t=0
+		[[ $t -gt $newest ]] && newest=$t
+	fi
+	printf '%s' "$newest"
+}
+
+# Stop sessions that are cold on both signals. $1 = 'dry-run' to
+# only report. Run from cron/a timer or `cws reclaim`.
+fleet_reclaim() {
+	local dry="${1:-}"
+	local hours
+	hours=$(fleet_reclaim_idle_hours)
+	if [[ $hours -eq 0 ]]; then
+		log_info 'idle reclaim is off (set idle_hours=N in' \
+			"${appliance_etc:-/etc/coworkstation}/reclaim.conf)"
+		return 0
+	fi
+	local cutoff=$(($(date +%s) - hours * 3600))
+	local user state conns last
+	while read -r user; do
+		state=$(user_systemctl "$user" is-active kasmvnc.service \
+			2> /dev/null) || state='inactive'
+		[[ $state == 'active' ]] || continue
+		conns=$(fleet_port_clients "$(fleet_user_port "$user")")
+		if [[ $conns =~ ^[0-9]+$ && $conns -gt 0 ]]; then
+			continue
+		fi
+		last=$(fleet_last_activity "$user")
+		if [[ $last -ge $cutoff ]]; then
+			continue
+		fi
+		if [[ $dry == 'dry-run' ]]; then
+			log_info "would reclaim: $user (idle > ${hours}h," \
+				'no clients)'
+			continue
+		fi
+		user_systemctl "$user" stop kasmvnc.service || continue
+		fleet_audit_record 'session-reclaim' "$user"
+		log_info "reclaimed: $user (idle > ${hours}h, no clients;" \
+			'home persists — restart with: cws sessions start' \
+			"$user)"
+	done < <(fleet_users)
+}
+
 # Device inventory (ADR-008 phase 3a): every device that touched a
 # member's bridge, with the Access identity that used it. Data comes
 # from each user's bridge device registry — the bridge records it,

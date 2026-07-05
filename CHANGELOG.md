@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Idle reclaim (MDM phase 3b, opt-in).** `cws reclaim [--dry-run]`
+  stops sessions that are cold on BOTH signals — no established
+  client connections and no bridge activity within `idle_hours`
+  (`/etc/coworkstation/reclaim.conf`, default off) — the
+  Coder-plus-WorkSpaces heuristic from the pass-3 research. Homes
+  persist; every reclaim lands in the ops log.
+
 - **Device inventory (MDM phase 3a, ADR-008).** The bridge mints a
   per-device cookie and records the Cloudflare Access identity, user
   agent, and first/last-seen per request (0600 registry, capped,
