@@ -12,7 +12,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   bwrap Cowork backend, zero-trust roadmap, MCP-moat caveat) and
   `docs/research/2026-07-05-moat-research.md` — the full
   adversarially-verified deep-research report the ADRs cite, including
-  refuted claims and coverage gaps.
+  refuted claims and coverage gaps. A second pass
+  (`2026-07-05-moat-research-2.md`) covers Kasm Workspaces licensing,
+  Guacamole, Anthropic's account-sharing/OAuth terms, and the
+  private-MCP connector question; it resolves ADR-006 (stdio on the
+  box is the only reliable zero-exposure MCP path today) and adds
+  ADR-007 (integrate Claude Code Usage Monitor for per-member token
+  observability).
 
 - **Client bridge — the box now feels native to whatever device
   connects.** `cws-launch` guardian wraps the launcher and rotates

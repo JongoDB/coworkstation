@@ -2,9 +2,25 @@
 
 Architecture decision records for Coworkstation, newest first. Each
 records the context, the decision, and what would make us revisit it.
-Evidence citations reference
-[`research/2026-07-05-moat-research.md`](research/2026-07-05-moat-research.md)
-(findings F0–F7).
+Evidence citations reference the dated reports in
+[`research/`](research/) (pass 1 findings F0-F7, pass 2 findings
+P2-F0..P2-F9).
+
+## ADR-007: Token/quota observability by integrating, not building
+
+- **Status:** accepted (direction), 2026-07-05
+- **Context:** Pass-2 research ranked Claude token/quota observability
+  as the highest (impact on differentiation)/(effort) moat feature it
+  could verify (P2-F3, P2-F9): Claude Code Usage Monitor (MIT, ~8.4k
+  stars, actively maintained) already reads Claude Code's local JSONL
+  session data on-box, no API access and no network calls — a fit for
+  our zero-exposure posture — and no competitor in the verified set
+  offers per-member token observability at all.
+- **Decision:** Integrate it per member (doctor/dashboard surface),
+  don't write our own parser. Caveat honestly: it observes Claude
+  Code sessions' local logs, not every Claude surface.
+- **Revisit when:** the component goes unmaintained, or Anthropic
+  ships first-party usage APIs for consumer plans.
 
 ## ADR-006: Do not market "own MCP from a tablet" as the moat until validated
 
@@ -18,8 +34,19 @@ Evidence citations reference
   your hardware against your real filesystem" and empirically test
   whether an Access-gated tunneled MCP can register as a remote
   connector before making privacy-boundary claims in the README.
-- **Revisit when:** the connector-registration experiment (open
-  question 2 in the research doc) has an answer either way.
+- **Update (pass 2, same day):** largely resolved in our favor
+  (P2-F6..P2-F8): claude.ai custom connectors use a fixed
+  Anthropic-side OAuth callback and need Anthropic's cloud to reach
+  the server's token endpoint; the connector UI has no
+  service-token/custom-header path, so Cloudflare Access can't gate
+  it; Anthropic's own outbound-only "MCP tunnels" exist but are a
+  gated research preview explicitly NOT available as claude.ai
+  connectors. Today, private zero-exposure MCP is reliably achievable
+  only via the desktop's local stdio config — which is exactly what
+  Coworkstation ships. Market it with the dated caveat.
+- **Revisit when:** an empirical Access-bypass-scoped connector test
+  contradicts this, or MCP tunnels graduate to claude.ai connectors
+  (anthropics/claude-code#29486).
 
 ## ADR-005: Press the zero-trust moat — per-member Access policies and audit logging
 
@@ -126,8 +153,14 @@ Evidence citations reference
   everything Coworkstation adds is launcher-side (`cws-launch`),
   config-side, or runs beside the app (bridge, MCP servers). This is
   both the ToS posture and the maintenance posture.
-- **Caveat:** the official beta's terms around multi-user/VNC-exposed
-  operation are unexamined (open question 1); the ToS improvement is
-  directional, not confirmed.
+- **Caveat:** partially examined now (pass 2, P2-F4/P2-F5): no clause
+  specific to VNC/remote display was found, but Consumer Terms forbid
+  account sharing, plan limits are conditioned on "ordinary,
+  individual usage," and OAuth login is "intended exclusively for
+  purchasers" — products wrapping Claude belong on API keys. So:
+  per-member Claude accounts are mandatory (enforced by our design),
+  and operating Coworkstation as a hosted multi-tenant service around
+  consumer credentials would cross the line. The desktop-beta-specific
+  EULA remains unread (open question).
 - **Revisit when:** open question 1 gets an answer, or the official
   package's platform support changes.
