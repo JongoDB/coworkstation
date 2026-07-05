@@ -6,6 +6,51 @@ Evidence citations reference the dated reports in
 [`research/`](research/) (pass 1 findings F0-F7, pass 2 findings
 P2-F0..P2-F9).
 
+## ADR-008: The product is an MDM/MAM-style multi-tenant management layer
+
+- **Status:** accepted (direction), 2026-07-05
+- **Context (maintainer's requirement):** full Claude Desktop parity
+  from a remote, multi-client, multi-tenant perspective — token-usage
+  reporting, fleet/session management, per-user analytics, forced
+  authentication with a **different Claude subscription per user**,
+  and sessions bound to the account (and eventually the device) that
+  started them. This is compatible with the verified terms clauses
+  (P2-F4/P2-F5) precisely BECAUSE of the per-user-subscription rule:
+  nobody shares an account, every member signs into their own plan
+  inside their own isolated session, and the operator never proxies
+  requests through anyone's credentials. What the terms prohibit is
+  credential sharing and *products that route requests through
+  consumer logins* — a management layer that enforces
+  one-sub-per-user is the opposite of that. README keeps the caveat.
+- **Decision:** build the layer in phases, visibility first:
+  1. **Phase 1 (SHIPPED with this ADR): read-only fleet reporting.**
+     `cws sessions` — every session account, desktop state, clients
+     attached right now, up-since. `cws usage` — per-member token
+     usage summed from Claude Code's local JSONL logs (ADR-007:
+     observe locally, no API, no proxying; chat/Cowork don't write
+     local usage logs and the report says so).
+  2. **Phase 2: identity-bound auditing.** Per-member Access
+     policies and an audit log tying each session event to the
+     Cloudflare Access identity (JWT) that opened it (extends
+     ADR-005). Access already authenticates every connection; we
+     record, we don't add an auth system.
+  3. **Phase 3: device-bound sessions.** New client device = new
+     session, keyed on what Access can assert about the device
+     (JWT identity + device posture / WARP device UUID where
+     available; user-agent as the weak fallback). Requires
+     per-member *multi-session* provisioning (today: one kasmVNC
+     display per member) — design against pass-3 research on how
+     Kasm Workspaces/Coder/VDI do session lifecycle before building.
+- **Hosting corollary:** full parity includes the Cowork KVM microVM,
+  so the reference deployment moves to a KVM-capable host (mini-PC,
+  dedicated/auction server, or GCP/Azure with nested virt — see the
+  runbook table). The DigitalOcean box was a validation environment
+  chosen because credentials already existed, not a recommendation;
+  it can't host Cowork (`backend=none`) and a multi-member box
+  deserves dedicated hardware anyway.
+- **Revisit when:** pass-3 research lands (session-binding patterns,
+  hosting economics), or Anthropic ships first-party fleet tooling.
+
 ## ADR-007: Token/quota observability by integrating, not building
 
 - **Status:** accepted (direction), 2026-07-05

@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Fleet reporting (MDM phase 1, ADR-008).** `cws sessions` — every
+  session account, desktop state, attached clients, up-since. `cws
+  usage [USER...]` — per-member Claude token usage summed from Claude
+  Code's local JSONL logs (request-id dedup; local-only, no API
+  calls; chat/Cowork excluded and labeled as such). New
+  `lib/fleet.sh` + `tests/fleet.bats`.
+
 - **Decision records + moat research.** `docs/decisions.md` (ADR format:
   engine posture, kasmVNC vs Selkies, client-bridge direction, why no
   bwrap Cowork backend, zero-trust roadmap, MCP-moat caveat) and

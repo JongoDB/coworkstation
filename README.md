@@ -67,7 +67,7 @@ What each piece buys you that you can't get otherwise:
 | DIY = hand-rolling tunnel + SSO + VNC + user isolation + certs + updates, and *knowing* it's safe | One command; `cws doctor` verifies every claim — loopback binds, live listeners, an Access policy on **every** hostname |
 | Exposed VNC/RDP port on the internet | Zero inbound ports; identity-aware SSO/MFA gate in front of everything |
 
-Day-2 management is one command: **`cws`** (interactive menu) or `cws storage add`, `cws member add`, `cws doctor`, `cws credentials`, `cws update`.
+Day-2 management is one command: **`cws`** (interactive menu) or `cws member add`, `cws sessions`, `cws usage`, `cws storage add`, `cws doctor`, `cws credentials`, `cws update`.
 
 ## Before you start
 
@@ -172,6 +172,7 @@ chmod +x cws-client && ./cws-client mount ~/projects/app you@cws.example.com
 | **Browser desktop** | a kasmVNC session behind Access when you need the full GUI (Cowork, the desktop app itself) |
 | **Remote storage** | `cws storage add` mounts Google Drive / OneDrive / Dropbox with a bounded cache, so the box stays small |
 | **Doctor** | `cws doctor` — verifies a live loopback listener, flags any session port bound beyond loopback, and **checks every tunnel hostname has an Access policy** |
+| **Fleet visibility** | `cws sessions` — who's up and how many clients are attached; `cws usage` — per-member Claude token report from local logs (no API calls, nothing leaves the box) |
 
 ## Signing in
 

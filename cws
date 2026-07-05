@@ -9,6 +9,8 @@
 #   cws doctor [--user NAME]      health checks
 #   cws client [setup|id|add-device|status]  pair devices (file sync)
 #   cws member add|remove|list    manage members
+#   cws sessions                  who's up, clients attached, since when
+#   cws usage [USER...]           per-member Claude token usage (local logs)
 #   cws storage add|remove|list   optional cloud-drive mounts (rclone)
 #   cws ssh-config [flags]        managed-settings sshConfigs JSON
 #   cws credentials [NAME]        show a user's kasmVNC sign-in
@@ -29,7 +31,7 @@ info() { printf '[cws] %s\n' "$*"; }
 err()  { printf '[cws] ERROR: %s\n' "$*" >&2; }
 
 usage() {
-	sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Same TTY seam as the setup wizard (APPLIANCE_ASSUME_TTY=1 for tests).
@@ -112,6 +114,24 @@ menu_client_pair() {
 	fi
 	label=$(ask '     a name for it' 'my-device')
 	cmd_client add-device "$dev" "$label"
+}
+
+# `cws sessions` / `cws usage` — read-only fleet reporting (ADR-008).
+cmd_fleet() {
+	local what="$1"
+	shift
+	# shellcheck source=lib/common.sh
+	source "$cws_dir/lib/common.sh"
+	# shellcheck source=lib/fleet.sh
+	source "$cws_dir/lib/fleet.sh"
+	case "$what" in
+		sessions) fleet_sessions | column -t -s $'\t' ;;
+		usage)
+			fleet_usage "$@" | column -t -s $'\t'
+			printf '\n(Claude Code sessions only — the chat/Cowork tabs\n'
+			printf "don't write local usage logs. See ADR-007.)\n"
+			;;
+	esac
 }
 
 cmd_version() {
@@ -215,6 +235,8 @@ menu() {
 			printf '  d) add an optional cloud drive (GDrive/OneDrive/Dropbox)\n'
 			printf '  4) add a member (read the terms note first)\n'
 			printf '  5) list members\n'
+			printf '  s) sessions — who is connected right now\n'
+			printf '  u) usage — per-member Claude token report\n'
 			printf '  6) generate SSH-target config for Claude Desktop\n'
 			printf '  7) run/re-run setup\n'
 			printf '  8) update Coworkstation\n'
@@ -229,6 +251,8 @@ menu() {
 			d|D) menu_storage_add ;;
 			4) menu_member_add ;;
 			5) "$cws_dir/member.sh" list ;;
+			s|S) cmd_fleet sessions ;;
+			u|U) cmd_fleet usage ;;
 			6) menu_ssh_config ;;
 			7) "$cws_dir/setup.sh" ;;
 			8) cmd_update ;;
@@ -249,6 +273,8 @@ main() {
 		member)      exec "$cws_dir/member.sh" "$@" ;;
 		storage)     exec "$cws_dir/storage.sh" "$@" ;;
 		client)      cmd_client "$@" ;;
+		sessions)    cmd_fleet sessions ;;
+		usage)       cmd_fleet usage "$@" ;;
 		ssh-config)  exec "$cws_dir/gen-sshconfigs.sh" "$@" ;;
 		testbench)   exec "$cws_dir/testbench/setup.sh" "$@" ;;
 		credentials) cmd_credentials "$@" ;;
