@@ -117,7 +117,7 @@ shellcheck -x install.sh setup.sh member.sh storage.sh gen-sshconfigs.sh lib/*.s
 
 ## Status
 
-**Alpha.** Hardware-validated end-to-end on an x86 VPS: bare Ubuntu 24.04 → the documented install → kasmVNC behind Cloudflare Access, doctor clean. The Cowork **VM feature specifically** is validated only on the opt-in repo engine (bwrap); on the default official engine it requires a KVM-capable host, which has not been hardware-verified yet. Raspberry Pi (Tier 3) is specified but unverified. The BATS suite validates script logic and dry-run plans, not Claude Desktop itself at scale.
+**Alpha.** Hardware-validated end-to-end on x86 VPSes, both engines: bare Ubuntu 24.04 → the documented install → kasmVNC behind Cloudflare Access, doctor clean (including the Access-coverage check) — once on the **default official engine with `/dev/kvm`** (Anthropic's apt package, `backend=kvm`), and once on the opt-in **repo engine + bwrap**. Not yet verified: the Cowork VM feature exercised end-to-end *inside* a session (install-level validation only), and Raspberry Pi (Tier 3). The BATS suite validates script logic and dry-run plans, not Claude Desktop itself at scale.
 
 ## License & terms
 

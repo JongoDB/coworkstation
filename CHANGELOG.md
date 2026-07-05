@@ -103,10 +103,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - BATS suite; a CI workflow running shellcheck, node --check,
   cloud-init YAML validation, and the suite with a live Xvfb
   end-to-end.
-- One happy path hardware-validated on a DigitalOcean Ubuntu 24.04 VPS
-  (repo engine + bwrap): the install brings up kasmVNC behind Cloudflare
-  Access with Claude Desktop, doctor clean. Five headless-startup bugs
-  found and fixed during that validation (user-manager bus, kasmVNC
-  control-user prompt, per-user TLS cert, doctor listener check,
-  nested-subdomain TLS warning). The official-engine + KVM and
-  Raspberry Pi paths are specified but not yet hardware-verified.
+- Hardware-validated on DigitalOcean Ubuntu 24.04 VPSes on BOTH
+  engines: the default official engine (Anthropic apt package,
+  /dev/kvm present, backend=kvm) and the opt-in repo engine (bwrap).
+  Each run: bare box → documented install → kasmVNC behind Cloudflare
+  Access, doctor clean including the Access-coverage check. Five
+  headless-startup bugs found and fixed during the first validation
+  (user-manager bus, kasmVNC control-user prompt, per-user TLS cert,
+  doctor listener check, nested-subdomain TLS warning). Raspberry Pi
+  remains specified but not hardware-verified.
