@@ -36,6 +36,7 @@ async function main() {
             CWS_BRIDGE_FILES_DIR: files,
             CWS_BRIDGE_RUNTIME_DIR: runtime,
             CWS_BRIDGE_CLIP_MODE: 'file',
+            CWS_BRIDGE_DEVICES_FILE: path.join(tmp, 'devices.json'),
         },
         stdio: ['ignore', 'ignore', 'pipe'],
     });
@@ -145,6 +146,28 @@ async function main() {
     clip = await r.json();
     if (clip.text !== clipText || clip.source !== 'file') {
         fail('clipboard round-trip mismatch: ' + JSON.stringify(clip));
+    }
+
+    // 4c) device registry: cookie minted on the page, identity and
+    // hits recorded on authed calls, listing is token-gated
+    const setCookie = page.headers.get('set-cookie') || '';
+    const dev = /cws_device=([\w-]+)/.exec(setCookie);
+    if (!dev) fail('no device cookie minted on the page');
+    r = await fetch(`${base}/bridge/clipboard`, {
+        headers: {
+            ...tok,
+            Cookie: `cws_device=${dev[1]}`,
+            'cf-access-authenticated-user-email': 'a@b.co',
+        },
+    });
+    if (!r.ok) fail('clipboard with device cookie failed');
+    r = await fetch(`${base}/bridge/devices`);
+    if (r.status !== 401) fail('devices listed without token');
+    r = await fetch(`${base}/bridge/devices`, { headers: tok });
+    const reg = (await r.json()).devices;
+    const rec = reg[dev[1]];
+    if (!rec || rec.identity !== 'a@b.co' || rec.hits < 1) {
+        fail('device record wrong: ' + JSON.stringify(reg));
     }
 
     // 5) MCP: client_screenshot returns the frame; stale frame refused

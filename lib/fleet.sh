@@ -120,6 +120,28 @@ fleet_usage_scan() {
 			| @tsv'
 }
 
+# Device inventory (ADR-008 phase 3a): every device that touched a
+# member's bridge, with the Access identity that used it. Data comes
+# from each user's bridge device registry — the bridge records it,
+# we only read.
+fleet_devices() {
+	printf 'USER\tDEVICE\tIDENTITY\tLAST_SEEN\tHITS\tAGENT\n'
+	local user home f
+	while read -r user; do
+		home=$(user_home "$user" 2> /dev/null) || continue
+		f="$home/.config/cws-bridge/devices.json"
+		[[ -s $f ]] || continue
+		jq -r --arg u "$user" 'to_entries[]
+			| [$u, (.key | .[0:8]),
+			   (.value.identity // "-"),
+			   ((.value.lastSeen // 0) / 1000 | floor
+			      | todate),
+			   (.value.hits // 0),
+			   ((.value.ua // "-") | .[0:40])] | @tsv' "$f" \
+			2> /dev/null
+	done < <(fleet_users)
+}
+
 fleet_audit_file() {
 	printf '%s/audit.log' "${appliance_etc:-/etc/coworkstation}"
 }

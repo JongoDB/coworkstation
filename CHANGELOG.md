@@ -7,6 +7,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Device inventory (MDM phase 3a, ADR-008).** The bridge mints a
+  per-device cookie and records the Cloudflare Access identity, user
+  agent, and first/last-seen per request (0600 registry, capped,
+  best-effort); `cws devices` lists devices fleet-wide. Third
+  research report (`2026-07-05-moat-research-3.md`): verified
+  session-lifecycle blueprints (Kasm keepalive/expiry, Coder
+  states + idle bump, WorkSpaces reclaim pitfall) and the proof that
+  browser-only cryptographic device identity is impossible on
+  Cloudflare (WARP + MDM file only).
+
 - **Fleet management (MDM phase 2, ADR-008).** `cws audit [DAYS]` —
   Access login history (Cloudflare API, api mode), kasmVNC session
   unit events (journald), and a 0600 operator ops log. `cws sessions

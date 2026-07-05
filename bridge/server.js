@@ -39,6 +39,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const crypto = require('crypto');
 
 const PORT = parseInt(process.env.CWS_BRIDGE_PORT || '8600', 10);
 const TOKEN_FILE = process.env.CWS_BRIDGE_TOKEN_FILE ||
@@ -59,6 +60,17 @@ const MAX_CLIP = 1024 * 1024;           // 1 MiB of clipboard text
 const CLIP_MODE = process.env.CWS_BRIDGE_CLIP_MODE || 'auto';
 const CLIP_DISPLAY = process.env.CWS_BRIDGE_DISPLAY ||
     process.env.DISPLAY || '';
+
+// Device registry (ADR-008 phase 3a): every device that touches the
+// bridge gets a server-minted cookie id, and each request records
+// the Cloudflare Access identity that made it. The identity header
+// is trustworthy here because the ONLY route to this loopback server
+// is the tunnel with Access in front; browser-only cryptographic
+// device identity is not possible (WARP-client only), so the cookie
+// is the device key and the verified Access identity is the person.
+const DEVICES_FILE = process.env.CWS_BRIDGE_DEVICES_FILE ||
+    path.join(process.env.HOME || '/', '.config/cws-bridge/devices.json');
+const MAX_DEVICES = 100;
 
 let token = '';
 try {
@@ -90,6 +102,57 @@ function safeJoin(root, share, rel) {
         return null;
     }
     return full;
+}
+
+function loadDevices() {
+    try {
+        return JSON.parse(fs.readFileSync(DEVICES_FILE, 'utf8'));
+    } catch (err) {
+        return {};
+    }
+}
+
+function saveDevices(devices) {
+    try {
+        fs.mkdirSync(path.dirname(DEVICES_FILE), { recursive: true });
+        fs.writeFileSync(DEVICES_FILE, JSON.stringify(devices, null, 1),
+            { mode: 0o600 });
+    } catch (err) { /* registry is best-effort, never block requests */ }
+}
+
+function deviceCookie(req) {
+    const m = /(?:^|;\s*)cws_device=([\w-]{8,64})(?:;|$)/
+        .exec(req.headers.cookie || '');
+    return m ? m[1] : null;
+}
+
+// Upsert the calling device. Mints the cookie when `res` is given
+// (the page GET); authed API calls just record. Returns the id.
+function deviceTouch(req, res) {
+    let id = deviceCookie(req);
+    if (!id && res) {
+        id = crypto.randomUUID();
+        res.setHeader('Set-Cookie', `cws_device=${id}; Path=/bridge; ` +
+            'Max-Age=63072000; SameSite=Lax');
+    }
+    if (!id) return null;
+    const devices = loadDevices();
+    const d = devices[id] || { firstSeen: Date.now(), hits: 0 };
+    d.lastSeen = Date.now();
+    d.hits += 1;
+    d.ua = String(req.headers['user-agent'] || '-').slice(0, 200);
+    d.identity =
+        String(req.headers['cf-access-authenticated-user-email'] || '-')
+            .slice(0, 200);
+    devices[id] = d;
+    const ids = Object.keys(devices);
+    if (ids.length > MAX_DEVICES) {
+        ids.sort((a, b) => devices[a].lastSeen - devices[b].lastSeen)
+            .slice(0, ids.length - MAX_DEVICES)
+            .forEach((old) => delete devices[old]);
+    }
+    saveDevices(devices);
+    return id;
 }
 
 function clipFile() { return path.join(RUNTIME_DIR, 'clipboard.txt'); }
@@ -164,6 +227,7 @@ async function handle(req, res) {
     // Static page: harmless without the token (which arrives in the
     // link fragment/query the operator hands out).
     if (req.method === 'GET' && (p === '/bridge' || p === '/bridge/')) {
+        deviceTouch(req, res);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(PAGE);
         return;
@@ -191,6 +255,12 @@ async function handle(req, res) {
 
     if (!authed(req)) {
         json(res, 401, { error: 'missing or bad bridge token' });
+        return;
+    }
+    deviceTouch(req);
+
+    if (req.method === 'GET' && p === '/bridge/devices') {
+        json(res, 200, { ok: true, devices: loadDevices() });
         return;
     }
 

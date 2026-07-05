@@ -107,6 +107,29 @@ EOF
 	[[ $output == *'cws audit'* ]]
 }
 
+@test "fleet_devices: renders the bridge device registry per user" {
+	fleet_users() { printf 'alice\n'; }
+	local home="$TEST_TMP/homed"
+	mkdir -p "$home/.config/cws-bridge"
+	cat > "$home/.config/cws-bridge/devices.json" << 'EOF'
+{"0a1b2c3d-e5f6":{"identity":"alice@corp.com","lastSeen":1751709600000,
+ "hits":42,"ua":"Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)"}}
+EOF
+	user_home() { printf '%s' "$TEST_TMP/homed"; }
+	run fleet_devices
+	[[ $status -eq 0 ]]
+	[[ ${lines[0]} == USER*DEVICE*IDENTITY*LAST_SEEN*HITS*AGENT ]]
+	[[ ${lines[1]} == alice*0a1b2c3d*alice@corp.com*42*'Mozilla/5.0 (iPad'* ]]
+}
+
+@test "fleet_devices: users without a registry are skipped quietly" {
+	fleet_users() { printf 'bob\n'; }
+	user_home() { printf '%s' "$TEST_TMP/nothere"; }
+	run fleet_devices
+	[[ $status -eq 0 ]]
+	[[ ${#lines[@]} -eq 1 ]]
+}
+
 @test "fleet_audit_record: appends actor+action, keeps 0600" {
 	SUDO_USER=admin fleet_audit_record session-stop alice
 	local f="$APPLIANCE_ETC/audit.log"

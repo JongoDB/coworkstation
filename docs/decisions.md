@@ -39,13 +39,30 @@ P2-F0..P2-F9).
      stop|start|restart USER` gives remote session control, each
      action recorded. Access already authenticates every connection;
      we record, we don't add an auth system (extends ADR-005).
-  3. **Phase 3: device-bound sessions.** New client device = new
-     session, keyed on what Access can assert about the device
-     (JWT identity + device posture / WARP device UUID where
-     available; user-agent as the weak fallback). Requires
-     per-member *multi-session* provisioning (today: one kasmVNC
-     display per member) — design against pass-3 research on how
-     Kasm Workspaces/Coder/VDI do session lifecycle before building.
+  3. **Phase 3: device-bound sessions.** Design settled by pass-3
+     research (P3-F7..P3-F9): browser-only cryptographic device
+     identity is NOT possible (Cloudflare device UUIDs need the WARP
+     client + an MDM deployment file; posture checks are
+     client-or-mTLS-only), so the device key is a server-minted
+     bridge cookie and the person is the Access-verified identity
+     (`Cf-Access-Jwt-Assertion` / authenticated-user-email header —
+     trustworthy because the only route to the loopback bridge is
+     the Access-gated tunnel).
+     - **Phase 3a (SHIPPED): device inventory.** The bridge upserts
+       a registry per request (cookie id, Access identity, UA,
+       first/last seen, hits; 0600, capped at 100, best-effort);
+       `cws devices` renders it fleet-wide.
+     - **Phase 3b (next): session lifecycle.** Imitate the verified
+       blueprint: Kasm's create/status/keepalive/destroy with policy
+       in per-member config (keepalive expiration + absolute session
+       time limit), Coder's Running/Stopped(-home-persists)/Deleted
+       states with connection-based idle bump, and the two-step
+       dormant-then-delete reclaim Coder paywalls — combining
+       connection presence AND in-session activity, since AWS
+       WorkSpaces proves connection-only under-reclaims (P3-F6).
+       Implement as systemd units + timers + a bridge heartbeat;
+       per-device *concurrent* sessions need multi-display
+       provisioning per member.
 - **Hosting corollary:** full parity includes the Cowork KVM microVM,
   so the reference deployment moves to a KVM-capable host (mini-PC,
   dedicated/auction server, or GCP/Azure with nested virt — see the

@@ -12,6 +12,7 @@
 #   cws sessions [stop|start|restart USER]  live sessions; remote actions
 #   cws usage [USER...]           per-member Claude token usage (local logs)
 #   cws audit [DAYS]              Access logins + session events + ops log
+#   cws devices                   devices seen per member (bridge registry)
 #   cws storage add|remove|list   optional cloud-drive mounts (rclone)
 #   cws ssh-config [flags]        managed-settings sshConfigs JSON
 #   cws credentials [NAME]        show a user's kasmVNC sign-in
@@ -32,7 +33,7 @@ info() { printf '[cws] %s\n' "$*"; }
 err()  { printf '[cws] ERROR: %s\n' "$*" >&2; }
 
 usage() {
-	sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Same TTY seam as the setup wizard (APPLIANCE_ASSUME_TTY=1 for tests).
@@ -146,6 +147,7 @@ cmd_fleet() {
 			printf "don't write local usage logs. See ADR-007.)\n"
 			;;
 		audit) fleet_audit "${1:-7}" ;;
+		devices) fleet_devices | column -t -s $'\t' ;;
 	esac
 }
 
@@ -293,6 +295,7 @@ main() {
 		sessions)    cmd_fleet sessions "$@" ;;
 		usage)       cmd_fleet usage "$@" ;;
 		audit)       cmd_fleet audit "$@" ;;
+		devices)     cmd_fleet devices ;;
 		ssh-config)  exec "$cws_dir/gen-sshconfigs.sh" "$@" ;;
 		testbench)   exec "$cws_dir/testbench/setup.sh" "$@" ;;
 		credentials) cmd_credentials "$@" ;;
