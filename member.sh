@@ -4,7 +4,9 @@
 #
 # Usage:
 #   sudo ./member.sh add NAME [--quota-mem 6G] [--quota-cpu 200%]
-#                             [--dry-run]
+#                             [--allow EMAIL[,...]] [--dry-run]
+#     --allow scopes the member hostname's Access policy to just
+#     those identities (forced per-member auth); default = box-wide list
 #   sudo ./member.sh remove NAME [--keep-home] [--yes] [--dry-run]
 #   ./member.sh list
 #
@@ -206,8 +208,16 @@ cmd_add() {
 	local name="$1"
 	local mem="$2"
 	local cpu="$3"
+	# Optional per-member Access allow list: scopes this member's
+	# hostname policy to just their identity (forced per-member auth,
+	# ADR-008 phase 2) instead of the box-wide allow list.
+	local allow="${4:-}"
 	local registry
 	registry=$(registry_file)
+
+	if [[ -n $allow ]] && ! validate_access_allow "$allow"; then
+		return 1
+	fi
 
 	if [[ -f $registry ]] && registry_get "$name" "$registry" \
 		> /dev/null; then
@@ -243,24 +253,33 @@ cmd_add() {
 	profile_kasmvnc_setup_auth "$name" || return 1
 	profile_kasmvnc_write_service "$name" "$display" || return 1
 	member_autostart "$name" || return 1
+	# Compute the member hostname BEFORE the client-bridge setup so
+	# the /bridge path route lands on the member's hostname too.
+	local base member_host=''
+	if base=$(appliance_base_hostname) && [[ -n $base ]]; then
+		member_host="$name.$base"
+	fi
+
 	clientsync_setup "$name" "$display" \
 		|| log_warn "client sync setup failed for $name (non-fatal);" \
 			"re-run with: sudo cws client setup --user $name"
 	clientbridge_setup "$name" "$display" "$member_host" \
 		|| log_warn "client bridge setup failed for $name (non-fatal)"
 
-	local base member_host=''
-	if base=$(appliance_base_hostname) && [[ -n $base ]]; then
-		member_host="$name.$base"
+	if [[ -n $member_host ]]; then
 		if [[ $(tunnel_conf_get mode 2> /dev/null) == 'api' ]]; then
 			if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
 				printf 'DRY-RUN: api ingress+dns+access for %s\n' \
 					"$member_host"
 			else
 				tunnel_api_member_add "$member_host" "$port" \
-					|| return 1
+					"$allow" || return 1
 			fi
 		else
+			if [[ -n $allow ]]; then
+				log_warn '--allow needs api tunnel mode; add the' \
+					"Access policy for $member_host yourself"
+			fi
 			apply_ingress_transform ingress_add "$member_host" \
 				"$port" || return 1
 		fi
@@ -388,7 +407,7 @@ cmd_list() {
 }
 
 usage() {
-	sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 main() {
@@ -398,6 +417,7 @@ main() {
 	appliance_force=0
 
 	local name='' mem='6G' cpu='200%' keep_home=0 assume_yes=0
+	local allow=''
 	if [[ $cmd == 'add' || $cmd == 'remove' ]]; then
 		name="${1:-}"
 		if [[ -z $name || $name == --* ]]; then
@@ -417,6 +437,8 @@ main() {
 			             mem="$2"; shift 2 ;;
 			--quota-cpu) require_value "$@" || return 1
 			             cpu="$2"; shift 2 ;;
+			--allow)     require_value "$@" || return 1
+			             allow="$2"; shift 2 ;;
 			--keep-home) keep_home=1; shift ;;
 			--yes)       assume_yes=1; shift ;;
 			--dry-run)   appliance_dry_run=1; shift ;;
@@ -432,7 +454,7 @@ main() {
 		add)
 			require_root || return 1
 			member_lock || return 1
-			cmd_add "$name" "$mem" "$cpu"
+			cmd_add "$name" "$mem" "$cpu" "$allow"
 			;;
 		remove)
 			require_root || return 1

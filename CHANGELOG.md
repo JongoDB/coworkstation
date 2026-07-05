@@ -7,6 +7,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Fleet management (MDM phase 2, ADR-008).** `cws audit [DAYS]` —
+  Access login history (Cloudflare API, api mode), kasmVNC session
+  unit events (journald), and a 0600 operator ops log. `cws sessions
+  stop|start|restart USER` — remote session actions, every action
+  recorded. `cws member add --allow EMAIL[,..]` — per-member Access
+  policy (forced per-member auth). Fixes member client-bridge routes:
+  the member hostname is now computed before bridge setup, so
+  `/bridge` path rules land on member hostnames too.
+
 - **Fleet reporting (MDM phase 1, ADR-008).** `cws sessions` — every
   session account, desktop state, attached clients, up-since. `cws
   usage [USER...]` — per-member Claude token usage summed from Claude

@@ -13,7 +13,13 @@
 # sessions (chat/Cowork don't write local usage logs), and counts
 # are approximate (dedup by request id when present).
 #
-# Sourced by cws. Read-only: nothing here mutates state.
+# Phase 2 adds the write side of industry MDM: remote session
+# actions (start/stop/restart, each recorded), a local append-only
+# ops log, and the audit trail — session unit events from journald
+# plus Access login history from the Cloudflare API in api mode.
+#
+# Sourced by cws (which also sources tunnel-api.sh for the Access
+# log fetch).
 #===============================================================================
 
 # Session accounts = every user with a provisioned kasmVNC user unit.
@@ -112,6 +118,124 @@ fleet_usage_scan() {
 			| [.n, .i, .o, .cr, .cw,
 			   (if .last == "" then "-" else .last end)]
 			| @tsv'
+}
+
+fleet_audit_file() {
+	printf '%s/audit.log' "${appliance_etc:-/etc/coworkstation}"
+}
+
+# Append one operator action to the local ops log (0600). Best-effort
+# by design: reporting must never block the action it records.
+fleet_audit_record() {
+	local action="$1"
+	local target="$2"
+	local f
+	f=$(fleet_audit_file)
+	mkdir -p "$(dirname "$f")" 2> /dev/null
+	printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+		"${SUDO_USER:-$(id -un)}" "$action" "$target" >> "$f" \
+		2> /dev/null || return 0
+	chmod 600 "$f" 2> /dev/null
+	return 0
+}
+
+# Remote session action: start|stop|restart a member's desktop.
+# Every action lands in the ops log with who ran it.
+fleet_session_ctl() {
+	local action="$1"
+	local user="$2"
+	case "$action" in
+		start|stop|restart) ;;
+		*)
+			log_err "unknown session action '$action'" \
+				'(start|stop|restart)'
+			return 1
+			;;
+	esac
+	if [[ -z $user ]]; then
+		log_err "usage: cws sessions $action USER"
+		return 1
+	fi
+	local home
+	home=$(user_home "$user") || return 1
+	if [[ ! -f $home/.config/systemd/user/kasmvnc.service ]]; then
+		log_err "no session provisioned for '$user'"
+		return 1
+	fi
+	user_systemctl "$user" "$action" kasmvnc.service || return 1
+	fleet_audit_record "session-$action" "$user"
+	log_info "session $action: $user"
+}
+
+# Session unit events (started/stopped/failed) from journald, with
+# UIDs resolved to names. $1 = days back (default 7).
+fleet_audit_unit_events() {
+	local days="${1:-7}"
+	if ! command -v journalctl > /dev/null 2>&1; then
+		log_warn 'journalctl unavailable; no unit events'
+		return 0
+	fi
+	printf 'TIME\tUSER\tEVENT\n'
+	local ts uid msg user
+	while IFS=$'\t' read -r ts uid msg; do
+		user=$(getent passwd "$uid" 2> /dev/null | cut -d: -f1)
+		printf '%s\t%s\t%s\n' \
+			"$(date -u -d "@$((ts / 1000000))" +%Y-%m-%dT%H:%M:%SZ)" \
+			"${user:-uid:$uid}" "$msg"
+	done < <(journalctl -q -o json --since "-${days}d" \
+		_SYSTEMD_USER_UNIT=kasmvnc.service + USER_UNIT=kasmvnc.service \
+		2> /dev/null \
+		| jq -r 'select(.MESSAGE | test("Started|Stopped|Failed"))
+			| [(.__REALTIME_TIMESTAMP // "0"),
+			   (._UID // "0"), .MESSAGE] | @tsv')
+}
+
+# Access login history from the Cloudflare API (api mode only):
+# who authenticated to which hostname, when, from where. This is the
+# identity side of the audit trail — every session connection passed
+# through Access first.
+fleet_audit_access() {
+	local limit="${1:-25}"
+	if [[ $(tunnel_conf_get mode 2> /dev/null) != 'api' ]]; then
+		log_info 'manual tunnel mode: Access login history lives in' \
+			'the Cloudflare dashboard (Zero Trust -> Logs -> Access)'
+		return 0
+	fi
+	local token_file account
+	token_file=$(tunnel_conf_get token_file) || return 1
+	account=$(tunnel_conf_get account_id) || return 1
+	tunnel_api_load_token "$token_file" || return 1
+	local rows
+	if ! rows=$(cf_call GET \
+		"/accounts/$account/access/logs/access_requests?limit=$limit" \
+		| jq -r '.result[]?
+			| [.created_at, (.user_email // "-"),
+			   (.app_domain // "-"),
+			   (if .allowed == false then "BLOCKED" else "allowed" end),
+			   (.ip_address // "-")] | @tsv'); then
+		log_warn 'could not fetch Access logs — the API token may' \
+			'need the "Access: Audit Logs : Read" permission'
+		return 1
+	fi
+	printf 'TIME\tIDENTITY\tHOSTNAME\tRESULT\tFROM\n'
+	printf '%s\n' "$rows"
+}
+
+# The combined audit trail. $1 = days back for unit events.
+fleet_audit() {
+	local days="${1:-7}"
+	printf '=== Access logins (identity, via Cloudflare) ===\n'
+	fleet_audit_access 25 || true
+	printf '\n=== Session unit events (last %s days) ===\n' "$days"
+	fleet_audit_unit_events "$days"
+	local f
+	f=$(fleet_audit_file)
+	printf '\n=== Operator actions (%s) ===\n' "$f"
+	if [[ -s $f ]]; then
+		tail -n 25 "$f"
+	else
+		printf '(none recorded yet)\n'
+	fi
 }
 
 # Usage table across the fleet (or the named users).

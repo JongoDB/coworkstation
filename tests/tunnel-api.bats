@@ -280,6 +280,15 @@ teardown() {
 	[[ $output != *'rewrite'* ]]
 }
 
+@test "member add: --allow is validated before any account changes" {
+	# shellcheck source=member.sh
+	source "$SCRIPT_DIR/../member.sh"
+	useradd() { printf 'USERADD RAN\n'; }
+	run cmd_add alice 6G 200% 'not-an-email-or-domain'
+	[[ $status -ne 0 ]]
+	[[ $output != *'USERADD RAN'* ]]
+}
+
 # =============================================================================
 # Dry-run network guard + interactive wizard
 # =============================================================================

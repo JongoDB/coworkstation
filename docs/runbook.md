@@ -106,6 +106,11 @@ are specified in
 
 ## Member lifecycle (advanced — read the posture first)
 
+Add `--allow member@example.com` to scope the member's Access policy
+to just their identity — forced per-member auth, the multi-tenant
+default posture. Audit who actually signed in with `cws audit`.
+
+
 Multi-user is an advanced configuration, not the default pitch. Each
 member MUST sign in with their own Claude account — shared sign-ins
 violate Anthropic's terms and trip account-security defenses from a

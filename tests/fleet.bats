@@ -99,9 +99,95 @@ EOF
 	[[ ${lines[1]} == bob*inactive*0*- ]]
 }
 
-@test "cws: sessions and usage dispatch through the CLI" {
+@test "cws: sessions, usage and audit dispatch through the CLI" {
 	run "$SCRIPT_DIR/../cws" help
 	[[ $status -eq 0 ]]
 	[[ $output == *'cws sessions'* ]]
 	[[ $output == *'cws usage [USER...]'* ]]
+	[[ $output == *'cws audit'* ]]
+}
+
+@test "fleet_audit_record: appends actor+action, keeps 0600" {
+	SUDO_USER=admin fleet_audit_record session-stop alice
+	local f="$APPLIANCE_ETC/audit.log"
+	[[ -f $f ]]
+	[[ $(stat -c %a "$f") == 600 ]]
+	run cat "$f"
+	[[ $output == *$'\tadmin\tsession-stop\talice' ]]
+}
+
+@test "fleet_session_ctl: runs systemctl, records, validates input" {
+	local home="$TEST_TMP/homec"
+	mkdir -p "$home/.config/systemd/user"
+	: > "$home/.config/systemd/user/kasmvnc.service"
+	user_home() { printf '%s' "$TEST_TMP/homec"; }
+	local called="$TEST_TMP/called"
+	user_systemctl() { printf '%s %s %s\n' "$1" "$2" "$3" > "$called"; }
+	run fleet_session_ctl restart alice
+	[[ $status -eq 0 ]]
+	[[ $(cat "$called") == 'alice restart kasmvnc.service' ]]
+	grep -q $'session-restart\talice' "$APPLIANCE_ETC/audit.log"
+	run fleet_session_ctl explode alice
+	[[ $status -ne 0 ]]
+	[[ $output == *'unknown session action'* ]]
+	run fleet_session_ctl stop ''
+	[[ $status -ne 0 ]]
+}
+
+@test "fleet_session_ctl: refuses a user with no provisioned session" {
+	mkdir -p "$TEST_TMP/plain"
+	user_home() { printf '%s' "$TEST_TMP/plain"; }
+	run fleet_session_ctl stop bob
+	[[ $status -ne 0 ]]
+	[[ $output == *'no session provisioned'* ]]
+}
+
+@test "fleet_audit_access: manual mode points at the dashboard" {
+	tunnel_conf_get() { printf 'manual'; }
+	run fleet_audit_access 5
+	[[ $status -eq 0 ]]
+	[[ $output == *'Cloudflare dashboard'* ]]
+}
+
+@test "fleet_audit_access: api mode renders the log rows" {
+	tunnel_conf_get() {
+		case "$1" in
+			mode) printf 'api' ;;
+			token_file) printf '/dev/null' ;;
+			account_id) printf 'acc1' ;;
+		esac
+	}
+	tunnel_api_load_token() { return 0; }
+	cf_call() {
+		printf '%s' '{"success":true,"result":[{"created_at":"2026-07-05T10:00:00Z","user_email":"a@b.co","app_domain":"cws.example.com","allowed":true,"ip_address":"1.2.3.4"}]}'
+	}
+	run fleet_audit_access 5
+	[[ $status -eq 0 ]]
+	[[ ${lines[0]} == TIME*IDENTITY*HOSTNAME*RESULT*FROM ]]
+	[[ ${lines[1]} == *$'a@b.co\tcws.example.com\tallowed\t1.2.3.4' ]]
+}
+
+@test "tunnel_api_member_add: --allow override replaces the box list" {
+	# shellcheck source=lib/tunnel-api.sh
+	source "$SCRIPT_DIR/../lib/tunnel-api.sh"
+	tunnel_conf_get() {
+		case "$1" in
+			token_file) printf '/dev/null' ;;
+			account_id) printf 'acc1' ;;
+			tunnel_id) printf 'tun1' ;;
+			zone_id) printf 'z1' ;;
+			access_allow) printf 'everyone@corp.com' ;;
+		esac
+	}
+	tunnel_api_load_token() { return 0; }
+	cf_tunnel_get_ingress() { printf '[]'; }
+	ingress_json_add() { printf '[]'; }
+	cf_tunnel_put_ingress() { return 0; }
+	cf_dns_ensure_cname() { return 0; }
+	local seen="$TEST_TMP/allow"
+	cf_access_ensure_app() { printf '%s' "$3" > "$seen"; }
+	tunnel_api_member_add m.cws.example.com 8444 'alice@corp.com'
+	[[ $(cat "$seen") == 'alice@corp.com' ]]
+	tunnel_api_member_add m.cws.example.com 8444
+	[[ $(cat "$seen") == 'everyone@corp.com' ]]
 }

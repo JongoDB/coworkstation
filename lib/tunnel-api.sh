@@ -544,16 +544,23 @@ tunnel_api_provision() {
 
 # Member-level api-mode operations (called by member.sh when
 # tunnel.conf says mode=api).
-# Args: member_hostname port
+# Args: member_hostname port [allow_csv]
+# A non-empty allow_csv scopes the member hostname's Access policy
+# to just those identities (forced per-member auth) instead of the
+# box-wide allow list.
 tunnel_api_member_add() {
 	local hostname="$1"
 	local port="$2"
+	local allow_override="${3:-}"
 	local token_file account tunnel zone_id allow_csv
 	token_file=$(tunnel_conf_get token_file) || return 1
 	account=$(tunnel_conf_get account_id) || return 1
 	tunnel=$(tunnel_conf_get tunnel_id) || return 1
 	zone_id=$(tunnel_conf_get zone_id) || return 1
 	allow_csv=$(tunnel_conf_get access_allow) || return 1
+	if [[ -n $allow_override ]]; then
+		allow_csv="$allow_override"
+	fi
 
 	tunnel_api_load_token "$token_file" || return 1
 	local ingress

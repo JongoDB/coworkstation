@@ -29,11 +29,16 @@ P2-F0..P2-F9).
      usage summed from Claude Code's local JSONL logs (ADR-007:
      observe locally, no API, no proxying; chat/Cowork don't write
      local usage logs and the report says so).
-  2. **Phase 2: identity-bound auditing.** Per-member Access
-     policies and an audit log tying each session event to the
-     Cloudflare Access identity (JWT) that opened it (extends
-     ADR-005). Access already authenticates every connection; we
-     record, we don't add an auth system.
+  2. **Phase 2 (SHIPPED): identity-bound auditing + remote actions.**
+     `cws member add --allow` scopes a member hostname's Access
+     policy to just their identity (forced per-member auth).
+     `cws audit` unifies three trails: Access login history from the
+     Cloudflare API (who authenticated to which hostname, from
+     where), session unit events from journald, and a local 0600
+     ops log that records every operator action. `cws sessions
+     stop|start|restart USER` gives remote session control, each
+     action recorded. Access already authenticates every connection;
+     we record, we don't add an auth system (extends ADR-005).
   3. **Phase 3: device-bound sessions.** New client device = new
      session, keyed on what Access can assert about the device
      (JWT identity + device posture / WARP device UUID where

@@ -9,8 +9,9 @@
 #   cws doctor [--user NAME]      health checks
 #   cws client [setup|id|add-device|status]  pair devices (file sync)
 #   cws member add|remove|list    manage members
-#   cws sessions                  who's up, clients attached, since when
+#   cws sessions [stop|start|restart USER]  live sessions; remote actions
 #   cws usage [USER...]           per-member Claude token usage (local logs)
+#   cws audit [DAYS]              Access logins + session events + ops log
 #   cws storage add|remove|list   optional cloud-drive mounts (rclone)
 #   cws ssh-config [flags]        managed-settings sshConfigs JSON
 #   cws credentials [NAME]        show a user's kasmVNC sign-in
@@ -31,7 +32,7 @@ info() { printf '[cws] %s\n' "$*"; }
 err()  { printf '[cws] ERROR: %s\n' "$*" >&2; }
 
 usage() {
-	sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Same TTY seam as the setup wizard (APPLIANCE_ASSUME_TTY=1 for tests).
@@ -116,21 +117,35 @@ menu_client_pair() {
 	cmd_client add-device "$dev" "$label"
 }
 
-# `cws sessions` / `cws usage` — read-only fleet reporting (ADR-008).
+# `cws sessions` / `cws usage` / `cws audit` — the fleet surface
+# (ADR-008): visibility, remote session actions, audit trail.
 cmd_fleet() {
 	local what="$1"
 	shift
 	# shellcheck source=lib/common.sh
 	source "$cws_dir/lib/common.sh"
+	# shellcheck source=lib/tunnel-api.sh
+	source "$cws_dir/lib/tunnel-api.sh"
 	# shellcheck source=lib/fleet.sh
 	source "$cws_dir/lib/fleet.sh"
 	case "$what" in
-		sessions) fleet_sessions | column -t -s $'\t' ;;
+		sessions)
+			case "${1:-}" in
+				'') fleet_sessions | column -t -s $'\t' ;;
+				stop|start|restart)
+					fleet_session_ctl "$1" "${2:-}" ;;
+				*)
+					err "usage: cws sessions [stop|start|restart USER]"
+					return 1
+					;;
+			esac
+			;;
 		usage)
 			fleet_usage "$@" | column -t -s $'\t'
 			printf '\n(Claude Code sessions only — the chat/Cowork tabs\n'
 			printf "don't write local usage logs. See ADR-007.)\n"
 			;;
+		audit) fleet_audit "${1:-7}" ;;
 	esac
 }
 
@@ -237,6 +252,7 @@ menu() {
 			printf '  5) list members\n'
 			printf '  s) sessions — who is connected right now\n'
 			printf '  u) usage — per-member Claude token report\n'
+			printf '  a) audit — Access logins, session events, ops log\n'
 			printf '  6) generate SSH-target config for Claude Desktop\n'
 			printf '  7) run/re-run setup\n'
 			printf '  8) update Coworkstation\n'
@@ -253,6 +269,7 @@ menu() {
 			5) "$cws_dir/member.sh" list ;;
 			s|S) cmd_fleet sessions ;;
 			u|U) cmd_fleet usage ;;
+			a|A) cmd_fleet audit ;;
 			6) menu_ssh_config ;;
 			7) "$cws_dir/setup.sh" ;;
 			8) cmd_update ;;
@@ -273,8 +290,9 @@ main() {
 		member)      exec "$cws_dir/member.sh" "$@" ;;
 		storage)     exec "$cws_dir/storage.sh" "$@" ;;
 		client)      cmd_client "$@" ;;
-		sessions)    cmd_fleet sessions ;;
+		sessions)    cmd_fleet sessions "$@" ;;
 		usage)       cmd_fleet usage "$@" ;;
+		audit)       cmd_fleet audit "$@" ;;
 		ssh-config)  exec "$cws_dir/gen-sshconfigs.sh" "$@" ;;
 		testbench)   exec "$cws_dir/testbench/setup.sh" "$@" ;;
 		credentials) cmd_credentials "$@" ;;
