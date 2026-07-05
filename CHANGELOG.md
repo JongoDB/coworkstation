@@ -5,6 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-05
+
+Fixes found while validating the whole product end-to-end on live boxes
+(desktop session, member add, storage, reboot persistence, multi-distro).
+
+### Fixed
+
+- **Two Coworkstation boxes in one Cloudflare account no longer collide.**
+  The tunnel name is derived from the hostname
+  (`coworkstation-<hostname>`); a fixed name meant a second box adopted
+  the first's tunnel and merged ingress, so hostnames routed to the
+  wrong connector.
+- **kasmVNC installs on Debian 13 (and future codenames).** The host
+  codename maps to the nearest kasmVNC-shipped build (trixie -> bookworm,
+  newer Ubuntu -> noble) instead of 404-ing on a missing per-codename
+  `.deb`; a genuinely missing asset now fails with an actionable message.
+  (Live-confirmed: Debian 13 went from install-fail to kasmVNC listening.)
+- **cloud-init no longer stalls on first-boot apt-lock contention.**
+  `images/cloud-init.yaml` stops the distro's apt-daily / unattended
+  timers in `bootcmd` before the package phase (this hung provisioning
+  for many minutes on fresh droplets).
+- `gen-sshconfigs.sh` labels the environment-picker entry "Coworkstation"
+  (was the stale "Cowork appliance").
+- `install.sh` checks its target dir before the root gate (most
+  dangerous misconfiguration fails first) and gains BATS coverage.
+
 ## [0.2.0] - 2026-07-05
 
 First published release. 0.1.0 existed only as repository history; the
@@ -97,12 +123,6 @@ fixes and hardening from the from-zero audit and two live validations.
   "token failed verification").
 - `member.sh add` provisions the kasmVNC cert and control user, so an
   added member's session actually starts.
-- kasmVNC install no longer 404s on a distro newer than kasmVNC ships
-  a build for: the host codename maps to the nearest shipped build
-  (Debian 13 trixie -> bookworm, newer Ubuntu -> noble), and a genuine
-  missing-asset download fails with an actionable message pointing at
-  `APPLIANCE_KASMVNC_VERSION` / `--profile xrdp`. Found by installing on
-  a live Debian 13 droplet.
 - A forgotten flag value no longer hangs any argument parser
   (`require_value` guard everywhere).
 - `member.sh`, `storage.sh`, `gen-sshconfigs.sh`, `testbench/setup.sh`
