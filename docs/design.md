@@ -266,3 +266,34 @@ long-lived headless sessions, and multiple accounts per host are
 anti-abuse signals. If sign-in friction or session drops start
 appearing on a deployment, treat it as policy feedback — do not engineer
 around it.
+
+## Client bridge (proposed — not yet built)
+
+Make the *client device* a source and sensor for the remote Claude
+session, closing the loop the cloud-drive mount opens. Three tiers,
+by what each platform can actually do:
+
+1. **Sync provider (`cws storage add --provider syncthing`)** — the
+   tablet-capable path. Continuous two-way folder sync between the
+   client device (Syncthing: Möbius Sync on iOS, native on Android /
+   desktop) and `~/ClientSync/<device>` on the box. Lands in the same
+   place as `CloudDrives/`, so Cowork mounts and the Code tab work on
+   client files with zero further integration.
+2. **Browser bridge** — a small page served behind the SAME Access
+   gate as the session: (a) folder share via the File System Access
+   API (desktop Chrome/Edge; mobile browsers cannot pick directories),
+   streamed to the box; (b) client screen share via `getDisplayMedia`,
+   frames exposed to Claude through a `client-screen` MCP server on
+   the box. "Claude, look at what's on my screen" from a plain
+   browser tab — no client install.
+3. **Reverse mount (SSH-target mode)** — laptops running their own
+   Claude Desktop against the box: a `cws-client` helper does
+   `ssh -R` + sshfs so the box sees the laptop's project folder live.
+
+Consent posture: screen capture is per-session opt-in with a visible
+indicator and no frame persistence; folder shares are explicit picks,
+never whole-disk. Nothing here changes the Anthropic-terms posture
+(the user's own data on the user's own hardware), but the privacy UX
+must be loud. Prioritize tier 1 first (smallest build, tablet-first
+audience), then tier 2's screen share (the differentiator no
+Kasm/Guacamole-class product offers).
