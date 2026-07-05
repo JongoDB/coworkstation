@@ -53,15 +53,15 @@ gen_settings() {
 		local name _rest entry
 		while IFS=$'\t' read -r name _rest; do
 			[[ -z $name ]] && continue
-			entry=$(ssh_entry "appliance-$name" \
-				"Cowork appliance ($name)" \
+			entry=$(ssh_entry "coworkstation-$name" \
+				"Coworkstation ($name)" \
 				"$name@$host" "$start_dir") || return 1
 			entries=$(jq --argjson e "$entry" '. + [$e]' \
 				<<< "$entries") || return 1
 		done < "$registry"
 	else
 		local entry
-		entry=$(ssh_entry 'cowork-appliance' 'Cowork appliance' \
+		entry=$(ssh_entry 'coworkstation' 'Coworkstation' \
 			"$ssh_user@$host" "$start_dir") || return 1
 		entries=$(jq --argjson e "$entry" '. + [$e]' \
 			<<< "$entries") || return 1

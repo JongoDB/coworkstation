@@ -27,7 +27,7 @@ teardown() {
 	id=$(jq -r '.sshConfigs[0].id' <<< "$output")
 	name=$(jq -r '.sshConfigs[0].name' <<< "$output")
 	host=$(jq -r '.sshConfigs[0].sshHost' <<< "$output")
-	[[ $id == 'cowork-appliance' ]]
+	[[ $id == 'coworkstation' ]]
 	[[ -n $name ]]
 	[[ $host == 'cowork@claude.example.com' ]]
 }
