@@ -67,7 +67,7 @@ What each piece buys you that you can't get otherwise:
 | DIY = hand-rolling tunnel + SSO + VNC + user isolation + certs + updates, and *knowing* it's safe | One command; `cws doctor` verifies every claim — loopback binds, live listeners, an Access policy on **every** hostname |
 | Exposed VNC/RDP port on the internet | Zero inbound ports; identity-aware SSO/MFA gate in front of everything |
 
-Day-2 management is one command: **`cws`** (interactive menu) or `cws member add`, `cws sessions`, `cws usage`, `cws audit`, `cws storage add`, `cws doctor`, `cws credentials`, `cws update`.
+Day-2 management is one command: **`cws`** (interactive menu) or `cws member add`, `cws session add`, `cws sessions`, `cws usage`, `cws audit`, `cws devices`, `cws backup`, `cws storage add`, `cws doctor`, `cws credentials`, `cws update`.
 
 ## Before you start
 

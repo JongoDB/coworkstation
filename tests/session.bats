@@ -120,10 +120,15 @@ teardown() {
 	printf '#!/bin/sh\necho "XDG=${XDG_CONFIG_HOME:-unset}"\n' \
 		> "$TEST_TMP/bin/startxfce4"
 	chmod +x "$TEST_TMP/bin/startxfce4"
+	mkdir -p "$TEST_TMP/.config/autostart"
+	printf '[Desktop Entry]\n' \
+		> "$TEST_TMP/.config/autostart/claude-desktop.desktop"
 	run env -i HOME="$TEST_TMP" DISPLAY=':52.0' \
 		PATH="$TEST_TMP/bin:/usr/bin:/bin" sh "$x"
 	[[ $output == "XDG=$TEST_TMP/.config/cws-sessions/52" ]]
 	[[ -d $TEST_TMP/.config/cws-sessions/52 ]]
+	# the Claude autostart entry is seeded into the session home
+	[[ -f $TEST_TMP/.config/cws-sessions/52/autostart/claude-desktop.desktop ]]
 	run env -i HOME="$TEST_TMP" DISPLAY=':2.0' \
 		PATH="$TEST_TMP/bin:/usr/bin:/bin" sh "$x"
 	[[ $output == 'XDG=unset' ]]

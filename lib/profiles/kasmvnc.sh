@@ -156,6 +156,16 @@ if [ "$dnum" -ge 50 ] 2> /dev/null; then
 	XDG_CONFIG_HOME="$HOME/.config/cws-sessions/$dnum"
 	export XDG_CONFIG_HOME
 	mkdir -p "$XDG_CONFIG_HOME"
+	# Seed the Claude autostart entry — XDG autostart is read from
+	# the (redirected) config home, so without this an extra session
+	# opens an empty desktop.
+	if [ -f "$HOME/.config/autostart/claude-desktop.desktop" ] \
+		&& [ ! -f "$XDG_CONFIG_HOME/autostart/claude-desktop.desktop" ]
+	then
+		mkdir -p "$XDG_CONFIG_HOME/autostart"
+		cp "$HOME/.config/autostart/claude-desktop.desktop" \
+			"$XDG_CONFIG_HOME/autostart/"
+	fi
 fi
 exec startxfce4
 EOF
