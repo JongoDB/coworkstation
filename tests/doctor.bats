@@ -55,11 +55,27 @@ LISTEN 0 128 127.0.0.1:3389 0.0.0.0:*'
 	[[ $_apl_failures -eq 1 ]]
 }
 
-@test "public_binds: unrelated public ports are ignored" {
+@test "public_binds: unexpected public ports WARN but do not fail" {
 	local ss='LISTEN 0 128 0.0.0.0:22 0.0.0.0:*
 LISTEN 0 511 0.0.0.0:80 0.0.0.0:*'
-	apl_check_public_binds "$ss"
-	[[ $_apl_failures -eq 0 ]]
+	run apl_check_public_binds "$ss"
+	[[ $output == *'unexpected public listener: 0.0.0.0:22'* ]]
+	[[ $output == *'unexpected public listener: 0.0.0.0:80'* ]]
+	[[ $output != *FAIL* ]]
+}
+
+@test "public_binds: Syncthing 22000 WARNs (expected, tunnel-safe)" {
+	local ss='LISTEN 0 128 0.0.0.0:22000 0.0.0.0:*'
+	run apl_check_public_binds "$ss"
+	[[ $output == *'ClientSync (Syncthing) listens on 0.0.0.0:22000'* ]]
+	[[ $output != *FAIL* ]]
+	[[ $output != *'no ports bound beyond loopback'* ]]
+}
+
+@test "public_binds: clean loopback-only box gives the strong PASS" {
+	local ss='LISTEN 0 128 127.0.0.1:8443 0.0.0.0:*'
+	run apl_check_public_binds "$ss"
+	[[ $output == *'no ports bound beyond loopback'* ]]
 }
 
 @test "public_binds: ipv6 loopback is accepted" {

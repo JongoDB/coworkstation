@@ -82,27 +82,45 @@ apl_check_engine_installed() {
 # session port defeats the entire access model.
 apl_check_public_binds() {
 	local ss_output="$1"
-	local bad=0 line laddr port
+	local bad=0 exposed=0 line laddr port
 	while IFS= read -r line; do
 		[[ -z $line ]] && continue
 		laddr=$(awk '{print $4}' <<< "$line")
 		port="${laddr##*:}"
-		# Session ports: RDP 3389, VNC 5900-5999, kasmVNC 8443 upward
-		# (member N binds 8443+N-1, so cover well past a single-glob /9).
-		case "$port" in
-			3389|59[0-9][0-9]|84[4-9][0-9]|85[0-9][0-9]) ;;
-			*) continue ;;
-		esac
+		# Loopback binds are always fine.
 		case "$laddr" in
-			127.0.0.1:*|'[::1]':*) ;;
-			*)
-				_apl_fail "session port bound publicly: $laddr"
+			127.0.0.1:*|'[::1]':*|'[::ffff:127.0.0.1]':*) continue ;;
+		esac
+		# Anything else is a public listener. Classify by port: a
+		# session port publicly bound is a hard FAIL (the whole
+		# zero-inbound premise); Syncthing's 22000/21027 are expected
+		# for ClientSync and only reachable on a LAN (TLS +
+		# device-authenticated), so WARN not FAIL; anything else
+		# public is unexpected and flagged.
+		case "$port" in
+			3389|59[0-9][0-9]|84[4-9][0-9]|85[0-9][0-9])
+				_apl_fail "session port bound publicly: $laddr" \
+					'— the box is meant to bind sessions to loopback'
 				bad=1
+				;;
+			22000|21027)
+				_apl_warn "ClientSync (Syncthing) listens on $laddr" \
+					'— fine behind the tunnel (LAN-only, encrypted,' \
+					'paired-device auth); no inbound port is forwarded'
+				exposed=1
+				;;
+			*)
+				_apl_warn "unexpected public listener: $laddr" \
+					'— confirm nothing forwards an inbound port to it'
+				exposed=1
 				;;
 		esac
 	done <<< "$ss_output"
-	if [[ $bad -eq 0 ]]; then
-		_apl_pass 'no session ports bound beyond loopback'
+	if [[ $bad -eq 0 && $exposed -eq 0 ]]; then
+		_apl_pass 'no ports bound beyond loopback'
+	elif [[ $bad -eq 0 ]]; then
+		_apl_pass 'no SESSION ports bound beyond loopback' \
+			'(see public-listener notes above)'
 	fi
 }
 

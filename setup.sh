@@ -139,6 +139,12 @@ ensure_target_user() {
 			"'$default_user'" >&2
 		run_cmd useradd -m -s /bin/bash "$default_user" >&2 || return 1
 	fi
+	# Match member.sh: a session home is private (0700). The distro
+	# umask leaves it 0755/0750; on a box that may gain members later,
+	# the control user's home should be no more open than theirs.
+	local home
+	home=$(user_home "$default_user" 2> /dev/null) \
+		&& [[ -d $home ]] && run_cmd chmod 700 "$home"
 	printf '%s' "$default_user"
 }
 
