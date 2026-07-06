@@ -93,7 +93,8 @@ session_add() {
 	port=$((${appliance_kasm_base_port:-8443} + display - 1))
 	local base hostname=''
 	if base=$(session_base_hostname) && [[ -n $base ]]; then
-		hostname="${user}-s${display}.${base}"
+		hostname=$(tunnel_api_child_hostname "${user}-s${display}" \
+			"$base")
 	fi
 
 	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then

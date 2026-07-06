@@ -554,6 +554,26 @@ tunnel_api_provision() {
 	log_info "  Access allow list: $allow_csv"
 }
 
+# Hostname for a child surface (member, extra session) under the
+# session hostname. Cloudflare's free Universal SSL only covers ONE
+# label below the zone, so NAME.cws.zone (two deep) fails TLS at the
+# edge — found live. When the zone is known (api mode records
+# zone_name) and the base sits below the zone, flatten to
+# NAME-<baselabel>.zone; at the zone apex, NAME.zone is fine.
+# Manual mode (no zone recorded) keeps the dotted form and the
+# caller should warn about certificate depth.
+tunnel_api_child_hostname() {
+	local name="$1"
+	local base="$2"
+	local zone
+	zone=$(tunnel_conf_get zone_name 2> /dev/null) || zone=''
+	if [[ -z $zone || $base == "$zone" ]]; then
+		printf '%s.%s' "$name" "$base"
+	else
+		printf '%s-%s.%s' "$name" "${base%%.*}" "$zone"
+	fi
+}
+
 # Member-level api-mode operations (called by member.sh when
 # tunnel.conf says mode=api).
 # Args: member_hostname port [allow_csv]

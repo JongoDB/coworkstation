@@ -93,6 +93,26 @@ fleet_sessions() {
 		printf '%s\t%s\t%s\t%s\n' "$user" "$state" \
 			"$(fleet_port_clients "$port")" "$since"
 	done < <(fleet_users)
+	# Extra per-device sessions (lib/session.sh registry).
+	local reg="${appliance_etc:-/etc/coworkstation}/sessions.tsv"
+	local display
+	if [[ -f $reg ]]; then
+		while IFS=$'\t' read -r user display port _; do
+			[[ -z $user ]] && continue
+			state=$(user_systemctl "$user" is-active \
+				"kasmvnc-s${display}.service" 2> /dev/null) \
+				|| state='inactive'
+			since='-'
+			if [[ $state == 'active' ]]; then
+				since=$(user_systemctl "$user" show \
+					"kasmvnc-s${display}.service" \
+					-p ActiveEnterTimestamp --value 2> /dev/null)
+				since=${since:--}
+			fi
+			printf '%s:s%s\t%s\t%s\t%s\n' "$user" "$display" \
+				"$state" "$(fleet_port_clients "$port")" "$since"
+		done < "$reg"
+	fi
 }
 
 # Token usage for one user from Claude Code's local JSONL logs.
@@ -273,11 +293,12 @@ EOF
 # we only read.
 fleet_devices() {
 	printf 'USER\tDEVICE\tIDENTITY\tLAST_SEEN\tHITS\tAGENT\n'
-	local user home f
+	local user home f found=0
 	while read -r user; do
 		home=$(user_home "$user" 2> /dev/null) || continue
 		f="$home/.config/cws-bridge/devices.json"
 		[[ -s $f ]] || continue
+		found=1
 		jq -r --arg u "$user" 'to_entries[]
 			| [$u, (.key | .[0:8]),
 			   (.value.identity // "-"),
@@ -287,6 +308,9 @@ fleet_devices() {
 			   ((.value.ua // "-") | .[0:40])] | @tsv' "$f" \
 			2> /dev/null
 	done < <(fleet_users)
+	if [[ $found -eq 0 ]]; then
+		printf '(none yet)\t—\topen the bridge page on a device\t\t\t\n'
+	fi
 }
 
 fleet_audit_file() {
@@ -374,18 +398,21 @@ fleet_audit_access() {
 	token_file=$(tunnel_conf_get token_file) || return 1
 	account=$(tunnel_conf_get account_id) || return 1
 	tunnel_api_load_token "$token_file" || return 1
-	local rows
-	if ! rows=$(cf_call GET \
-		"/accounts/$account/access/logs/access_requests?limit=$limit" \
-		| jq -r '.result[]?
-			| [.created_at, (.user_email // "-"),
-			   (.app_domain // "-"),
-			   (if .allowed == false then "BLOCKED" else "allowed" end),
-			   (.ip_address // "-")] | @tsv'); then
+	# Capture cf_call BEFORE jq: piping would let jq mask a failed
+	# fetch as an empty (but headered) table — found live when the
+	# token lacked the audit-logs permission.
+	local resp rows
+	if ! resp=$(cf_call GET \
+		"/accounts/$account/access/logs/access_requests?limit=$limit"); then
 		log_warn 'could not fetch Access logs — the API token may' \
 			'need the "Access: Audit Logs : Read" permission'
 		return 1
 	fi
+	rows=$(jq -r '.[]?
+		| [.created_at, (.user_email // "-"),
+		   (.app_domain // "-"),
+		   (if .allowed == false then "BLOCKED" else "allowed" end),
+		   (.ip_address // "-")] | @tsv' <<< "$resp")
 	printf 'TIME\tIDENTITY\tHOSTNAME\tRESULT\tFROM\n'
 	printf '%s\n' "$rows"
 }

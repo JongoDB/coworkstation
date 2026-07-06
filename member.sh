@@ -257,7 +257,7 @@ cmd_add() {
 	# the /bridge path route lands on the member's hostname too.
 	local base member_host=''
 	if base=$(appliance_base_hostname) && [[ -n $base ]]; then
-		member_host="$name.$base"
+		member_host=$(tunnel_api_child_hostname "$name" "$base")
 	fi
 
 	clientsync_setup "$name" "$display" \

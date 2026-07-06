@@ -42,7 +42,10 @@ backup_install_packages() {
 	if command -v restic > /dev/null 2>&1; then
 		return 0
 	fi
-	pkg_install restic
+	# no-recommends: plain pkg_install drags in doc fonts and sphinx
+	# themes (~38 MB) for a single binary — seen live.
+	run_cmd env DEBIAN_FRONTEND=noninteractive \
+		apt-get install -y --no-install-recommends restic
 }
 
 # restic with the repo + key wired in. Args pass through.

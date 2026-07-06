@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Member/extra-session hostnames flatten to one label below the
+  zone** (`bob-cws.zone` instead of `bob.cws.zone`): Cloudflare's
+  free Universal SSL only covers one subdomain level, so the dotted
+  scheme failed TLS at the edge — found on a live from-zero install.
+  Manual mode (no recorded zone) keeps the dotted form.
+- `cws audit` no longer renders an empty table when the Access-log
+  fetch fails; the capture-before-jq fix also repairs the log
+  rendering itself (cf_call already unwraps `.result`) and the
+  missing-permission hint now actually prints.
+- `cws sessions` lists extra per-device sessions from the registry
+  (`user:sN` rows) instead of silently omitting them.
+- Doctor no longer prints duplicate Access-coverage lines for a
+  hostname with both a path rule and a plain rule.
+- Setup's next steps say `cws doctor` / `cws credentials` (not raw
+  script paths) and state the Cowork/KVM situation explicitly.
+- `cws devices` explains an empty registry; restic installs with
+  `--no-install-recommends` (was pulling ~38 MB of doc fonts).
+
 ### Added
 
 - **Concurrent per-device sessions (MDM phase 3c, ADR-010).**

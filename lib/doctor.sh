@@ -147,7 +147,7 @@ apl_check_access_coverage() {
 	fi
 	local hosts apps host
 	hosts=$(cf_tunnel_get_ingress "$account" "$tunnel" 2> /dev/null \
-		| jq -r '.[].hostname // empty' 2> /dev/null)
+		| jq -r '.[].hostname // empty' 2> /dev/null | sort -u)
 	apps=$(cf_call GET "/accounts/$account/access/apps" 2> /dev/null \
 		| jq -r '.[].domain' 2> /dev/null)
 	if [[ -z $hosts ]]; then

@@ -122,12 +122,13 @@ EOF
 	[[ ${lines[1]} == alice*0a1b2c3d*alice@corp.com*42*'Mozilla/5.0 (iPad'* ]]
 }
 
-@test "fleet_devices: users without a registry are skipped quietly" {
+@test "fleet_devices: empty registry says so instead of a bare header" {
 	fleet_users() { printf 'bob\n'; }
 	user_home() { printf '%s' "$TEST_TMP/nothere"; }
 	run fleet_devices
 	[[ $status -eq 0 ]]
-	[[ ${#lines[@]} -eq 1 ]]
+	[[ ${#lines[@]} -eq 2 ]]
+	[[ ${lines[1]} == '(none yet)'* ]]
 }
 
 @test "fleet_audit_record: appends actor+action, keeps 0600" {
@@ -276,6 +277,45 @@ EOF
 	[[ $output == *'Cloudflare dashboard'* ]]
 }
 
+@test "fleet_audit_access: fetch failure prints the permission hint" {
+	tunnel_conf_get() {
+		case "$1" in
+			mode) printf 'api' ;;
+			token_file) printf '/dev/null' ;;
+			account_id) printf 'acc1' ;;
+		esac
+	}
+	tunnel_api_load_token() { return 0; }
+	cf_call() { return 1; }
+	run fleet_audit_access 5
+	[[ $status -ne 0 ]]
+	[[ $output == *'Audit Logs'* ]]
+	[[ $output != *IDENTITY* ]]
+}
+
+@test "fleet_sessions: extra sessions from the registry are listed" {
+	printf 'alice\t50\t8492\ta-s50.x\n' > "$APPLIANCE_ETC/sessions.tsv"
+	fleet_users() { printf 'alice\n'; }
+	user_systemctl() {
+		if [[ $2 == 'is-active' ]]; then printf 'active\n'; return 0; fi
+		printf 'now\n'
+	}
+	fleet_port_clients() { printf '1'; }
+	run fleet_sessions
+	[[ $status -eq 0 ]]
+	[[ $output == *alice:s50*active* ]]
+}
+
+@test "tunnel_api_child_hostname: flattens below the zone, dots at apex" {
+	# shellcheck source=lib/tunnel-api.sh
+	source "$SCRIPT_DIR/../lib/tunnel-api.sh"
+	tunnel_conf_get() { printf 'example.com'; }
+	[[ $(tunnel_api_child_hostname bob cws.example.com) == 'bob-cws.example.com' ]]
+	[[ $(tunnel_api_child_hostname bob example.com) == 'bob.example.com' ]]
+	tunnel_conf_get() { return 1; }
+	[[ $(tunnel_api_child_hostname bob cws.example.com) == 'bob.cws.example.com' ]]
+}
+
 @test "fleet_audit_access: api mode renders the log rows" {
 	tunnel_conf_get() {
 		case "$1" in
@@ -285,8 +325,10 @@ EOF
 		esac
 	}
 	tunnel_api_load_token() { return 0; }
+	# real cf_call emits the UNWRAPPED .result — mocking the envelope
+	# here once hid a live bug (empty table with the header)
 	cf_call() {
-		printf '%s' '{"success":true,"result":[{"created_at":"2026-07-05T10:00:00Z","user_email":"a@b.co","app_domain":"cws.example.com","allowed":true,"ip_address":"1.2.3.4"}]}'
+		printf '%s' '[{"created_at":"2026-07-05T10:00:00Z","user_email":"a@b.co","app_domain":"cws.example.com","allowed":true,"ip_address":"1.2.3.4"}]'
 	}
 	run fleet_audit_access 5
 	[[ $status -eq 0 ]]

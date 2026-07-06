@@ -348,16 +348,18 @@ main() {
 
 	log_info 'provisioning complete. Next steps:'
 	if [[ $profile == 'kasmvnc' ]]; then
-		local home
-		home=$(user_home "$user" 2> /dev/null)
-		log_info "  - kasmVNC password for '$user': sudo cat" \
-			"${home:-/home/$user}/.vnc/kasm-credentials"
+		log_info "  - kasmVNC password for '$user':" \
+			"sudo cws credentials $user"
 	fi
 	log_info "  - open https://${hostname:-<hostname>} , pass Cloudflare"
 	log_info "    Access, then log in with the kasmVNC credentials above"
 	log_info "  - inside the session, sign into Claude (this populates"
 	log_info "    the keyring on first use)"
-	log_info "  - run: sudo ./setup.sh doctor --user $user"
+	if [[ ! -e /dev/kvm ]]; then
+		log_info '  - note: Cowork VM unavailable on this host (no' \
+			'/dev/kvm — nested virt); chat, Code tab, MCP unaffected'
+	fi
+	log_info "  - health check any time: sudo cws doctor"
 	if [[ $profile == 'kasmvnc' && -n $hostname \
 		&& $tunnel_mode == 'manual' ]]; then
 		log_info '  - finish the cloudflared tunnel steps printed above'

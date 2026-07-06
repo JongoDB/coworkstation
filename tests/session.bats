@@ -66,7 +66,12 @@ teardown() {
 	: > "$TEST_TMP/home/.config/systemd/user/kasmvnc.service"
 	chown() { return 0; }
 	user_systemctl() { printf '%s\n' "$*" >> "$TEST_TMP/sysctl"; }
-	tunnel_conf_get() { printf 'api'; }
+	tunnel_conf_get() {
+		case "$1" in
+			mode) printf 'api' ;;
+			zone_name) printf 'example.com' ;;
+		esac
+	}
 	tunnel_api_member_add() {
 		printf '%s %s %s\n' "$1" "$2" "${3:-}" > "$TEST_TMP/route"
 	}
@@ -75,8 +80,9 @@ teardown() {
 	local unit="$TEST_TMP/home/.config/systemd/user/kasmvnc-s50.service"
 	[[ -f $unit ]]
 	grep -q 'websocketPort 8492' "$unit"
-	[[ $(cat "$TEST_TMP/route") == 'alice-s50.cws.example.com 8492 alice@corp.com' ]]
-	grep -qP '^alice\t50\t8492\talice-s50\.cws\.example\.com$' \
+	# hostname FLATTENS to one label below the zone (Universal SSL)
+	[[ $(cat "$TEST_TMP/route") == 'alice-s50-cws.example.com 8492 alice@corp.com' ]]
+	grep -qP '^alice\t50\t8492\talice-s50-cws\.example\.com$' \
 		"$APPLIANCE_ETC/sessions.tsv"
 	grep -q $'session-add\talice:50' "$APPLIANCE_ETC/audit.log"
 	grep -q 'enable --now kasmvnc-s50.service' "$TEST_TMP/sysctl"
