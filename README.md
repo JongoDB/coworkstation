@@ -208,6 +208,7 @@ Open `https://<hostname>`, pass the Access login, enter the kasmVNC credentials,
 - [`docs/runbook.md`](docs/runbook.md) — provision, members, edge, storage, backup, troubleshooting
 - [`docs/decisions.md`](docs/decisions.md) — ADRs: engine posture, session layer, client bridge, no-bwrap
 - [`docs/research/`](docs/research/) — dated deep-research reports the decisions cite
+- [`docs/browser-validation.md`](docs/browser-validation.md) — validate a live box from a real client browser
 
 ## Layout
 
