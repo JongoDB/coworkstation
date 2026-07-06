@@ -52,3 +52,18 @@ teardown() {
 	u=$(SUDO_USER=root APPLIANCE_DEFAULT_USER=cowork ensure_target_user '')
 	[[ $u == 'cowork' ]]
 }
+
+@test "colord_polkit_rule: grants the color-manager action group" {
+	local rule
+	rule=$(colord_polkit_rule)
+	[[ $rule == *'org.freedesktop.color-manager.'* ]]
+	[[ $rule == *'polkit.Result.YES'* ]]
+	[[ $rule == *'polkit.addRule'* ]]
+}
+
+@test "install_polkit_rules: writes the rule to polkit's rules.d" {
+	# write_file runs in a pipeline subshell, so record via a file.
+	write_file() { printf '%s' "$1" > "$TEST_TMP/target"; cat > /dev/null; }
+	install_polkit_rules
+	[[ "$(cat "$TEST_TMP/target")" == '/etc/polkit-1/rules.d/40-cws-colord.rules' ]]
+}

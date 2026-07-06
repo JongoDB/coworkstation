@@ -117,6 +117,30 @@ install_session_stack() {
 		gnome-keyring libsecret-1-0 libpam-gnome-keyring
 }
 
+# A kasmVNC/xrdp desktop is not a logind "local"/"active" seat, so
+# colord's device/profile actions fall through to the admin-auth rule
+# and pop "Authentication is required to create a color managed device"
+# on every session start. A headless appliance does no colour
+# management, so grant the whole color-manager action group and the
+# prompt never appears. Emitted separately so it stays unit-testable.
+colord_polkit_rule() {
+	cat << 'EOF'
+// Coworkstation: silence colord's PolicyKit prompt in headless
+// VNC/RDP sessions (they are not local seats, so the default rule
+// asks for a password). No colour management is needed here.
+polkit.addRule(function(action, subject) {
+	if (action.id.indexOf("org.freedesktop.color-manager.") === 0) {
+		return polkit.Result.YES;
+	}
+});
+EOF
+}
+
+install_polkit_rules() {
+	colord_polkit_rule \
+		| write_file /etc/polkit-1/rules.d/40-cws-colord.rules
+}
+
 # Resolve the session user, minting a default unprivileged account when
 # running as root with nothing to fall back on — the fresh-VPS case
 # where `curl | sudo bash` has no $SUDO_USER and no non-root account
@@ -301,6 +325,7 @@ main() {
 	install_base_deps || return 1
 	enable_unattended_upgrades || return 1
 	install_session_stack || return 1
+	install_polkit_rules || return 1
 	install_engine || return 1
 
 	# Cowork's microVM runs as the session user; /dev/kvm is
