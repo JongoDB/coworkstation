@@ -84,6 +84,14 @@ LISTEN 0 511 0.0.0.0:80 0.0.0.0:*'
 	[[ $_apl_failures -eq 0 ]]
 }
 
+@test "public_binds: 127.0.0.0/8 (systemd-resolved) is loopback, no warn" {
+	local ss='LISTEN 0 4096 127.0.0.53%lo:53 0.0.0.0:*
+LISTEN 0 4096 127.0.0.54:53 0.0.0.0:*'
+	run apl_check_public_binds "$ss"
+	[[ $output != *'unexpected'* ]]
+	[[ $output == *'no ports bound beyond loopback'* ]]
+}
+
 # =============================================================================
 # apl_check_engine_conf
 # =============================================================================

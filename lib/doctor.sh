@@ -87,9 +87,11 @@ apl_check_public_binds() {
 		[[ -z $line ]] && continue
 		laddr=$(awk '{print $4}' <<< "$line")
 		port="${laddr##*:}"
-		# Loopback binds are always fine.
+		# Loopback binds are always fine — the WHOLE 127.0.0.0/8
+		# range (systemd-resolved uses 127.0.0.53), the interface
+		# suffix ss appends (127.0.0.53%lo), and IPv6 loopback.
 		case "$laddr" in
-			127.0.0.1:*|'[::1]':*|'[::ffff:127.0.0.1]':*) continue ;;
+			127.*|'[::1]'*:*|'[::ffff:127.'*) continue ;;
 		esac
 		# Anything else is a public listener. Classify by port: a
 		# session port publicly bound is a hard FAIL (the whole
