@@ -141,15 +141,40 @@ Grounded on the live box, and they **refine the architecture**:
    `isEncryptionAvailable` returns true and sign-in persists.
 3. Scope and degradation unchanged from above.
 
-### Remaining risk / next step
+### Spike result — the uncertain piece is resolved
 
-The create-prompt + persist loop must still be **verified live**
-(trigger at session start → confirm the dialog renders on `:1` →
-confirm `login.keyring` is written and `isEncryptionAvailable=true` →
-confirm sign-in survives a restart). This needs `libsecret-tools`
-installed and a browser to observe/answer the prompt, ideally on a box
-that is not mid-reboot. Recommend implementing the session hook behind
-this verified loop rather than shipping blind.
+Verified live on the box: with `libsecret-tools` installed, after
+`dbus-update-activation-environment DISPLAY XAUTHORITY`, a
+`secret-tool store` triggered gnome-keyring's **"Choose password for
+new keyring"** dialog, which **rendered on the primary session's XFCE
+desktop** (confirmed by screenshot). That was the one uncertain piece —
+whether the gcr prompt can render in an XFCE/VNC session. It can. The
+dialog was cancelled, so no keyring/credential was created; the
+member's real passphrase stays theirs to set.
+
+Everything downstream (keyring written → `isEncryptionAvailable=true` →
+sign-in persists) is standard Electron/gnome-keyring behaviour, so the
+design is de-risked.
+
+### Implementation
+
+Put the step in `cws-launch` (already fronts every Claude launch, runs
+in-session with `DISPLAY`, and already branches on `claude_config`):
+
+- Only for primary/member config homes (skip `cws-sessions/<N>`, which
+  stay on `--password-store=basic`).
+- Export `DISPLAY`/`XAUTHORITY` to the D-Bus activation environment.
+- `secret-tool store` a fixed marker → creates the login keyring the
+  first time (member sets the passphrase) or unlocks it thereafter,
+  **before** exec'ing Claude, so `isEncryptionAvailable` is already
+  true when Claude checks. Member cancels → fall through to today's
+  behaviour (no persistence, no hang).
+- Add `libsecret-tools` to the session stack.
+
+Unit-test the scoping/invocation (mock `secret-tool` /
+`dbus-update-activation-environment`); the passphrase-set and
+persist-across-restart is inherently the member's self-service step,
+completed on their next real login.
 
 ## Out of scope
 

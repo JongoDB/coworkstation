@@ -86,6 +86,42 @@ teardown() {
 	[[ $output != *'--password-store=basic'* ]]
 }
 
+@test "prepare_keyring: unlocks the login keyring for a primary session" {
+	local dir="$TEST_TMP/bin"
+	mkdir -p "$dir"
+	# Stubs record that they ran and with what.
+	printf '#!/bin/sh\necho "store $*" >> "%s/calls"\n' "$TEST_TMP" \
+		> "$dir/secret-tool"
+	printf '#!/bin/sh\necho "env $*" >> "%s/calls"\n' "$TEST_TMP" \
+		> "$dir/dbus-update-activation-environment"
+	chmod +x "$dir/secret-tool" "$dir/dbus-update-activation-environment"
+	PATH="$dir:$PATH" prepare_keyring
+	grep -q 'env DISPLAY XAUTHORITY' "$TEST_TMP/calls"
+	grep -q 'store .*org.coworkstation.Login' "$TEST_TMP/calls"
+}
+
+@test "prepare_keyring: skips extra sessions (they use basic store)" {
+	claude_config="$TEST_TMP/cws-sessions/50/Claude"
+	local dir="$TEST_TMP/bin"
+	mkdir -p "$dir"
+	printf '#!/bin/sh\necho ran >> "%s/calls"\n' "$TEST_TMP" \
+		> "$dir/secret-tool"
+	chmod +x "$dir/secret-tool"
+	PATH="$dir:$PATH" prepare_keyring
+	[[ ! -f $TEST_TMP/calls ]]
+}
+
+@test "prepare_keyring: no-op when secret-tool is absent" {
+	# Empty PATH so secret-tool is not found; prepare_keyring uses only
+	# shell builtins on that path and must return cleanly.
+	mkdir -p "$TEST_TMP/empty"
+	local saved="$PATH"
+	PATH="$TEST_TMP/empty"
+	run prepare_keyring
+	PATH="$saved"
+	[[ $status -eq 0 ]]
+}
+
 @test "main: extra session forces the plaintext password store" {
 	# An extra session's config home lives under cws-sessions/<N>.
 	export CWS_CLAUDE_CONFIG="$TEST_TMP/cws-sessions/50/Claude"
