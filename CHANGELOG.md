@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`cws reconfigure`** re-applies the idempotent config a fresh `setup`
+  writes but a code-only `cws update` cannot reach — system polkit
+  rules and each user's generated session config (`xstartup`/yaml) +
+  autostart, for the primary user and every member. Closes the gap
+  where a shipped config fix (e.g. the colord rule) needed a full
+  re-provision to land on a running box. `cws update` now points at it.
+  Idempotent; effective on the next session start.
+
 - **Persistent, passphrase-protected sign-in.** Claude's "sign-in won't
   be saved" came from having no usable secret store: a VNC/RDP desktop
   is not a PAM login, so gnome-keyring never created a login keyring,

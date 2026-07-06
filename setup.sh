@@ -189,6 +189,48 @@ install_autostart() {
 	fi
 }
 
+# Re-apply the idempotent config a fresh setup writes but a code-only
+# `cws update` cannot reach: one user's generated session config
+# (xstartup/yaml) + autostart. System policy is handled once in
+# run_reconfigure. Touches no packages, tunnel, quotas, or services.
+reconfigure_user() {
+	local user="$1"
+	local port="$2"
+	local profile="$3"
+	case "$profile" in
+		kasmvnc) profile_kasmvnc_write_config "$user" "$port" \
+			|| return 1 ;;
+	esac
+	install_autostart "$user"
+}
+
+# `cws reconfigure`: re-apply config to a running box after a `cws
+# update` so shipped config fixes (polkit rules, xstartup changes) land
+# without a full re-provision. Idempotent; changes take effect on the
+# next session start.
+run_reconfigure() {
+	local user="$1"
+	require_root || return 1
+	local conf="$appliance_etc/appliance.conf"
+	local profile
+	profile=$(grep -m1 '^profile=' "$conf" 2> /dev/null | cut -d= -f2)
+	profile="${profile:-kasmvnc}"
+	log_info "reconfigure: re-applying config (profile: $profile)"
+	install_polkit_rules || return 1
+	reconfigure_user "$user" "$appliance_kasm_base_port" "$profile" \
+		|| return 1
+	local reg="$appliance_etc/members.tsv"
+	if [[ -f $reg ]]; then
+		local name display port _rest
+		while IFS=$'\t' read -r name display port _rest; do
+			[[ -z $name ]] && continue
+			log_info "  member '$name' (display :$display)"
+			reconfigure_user "$name" "$port" "$profile" || return 1
+		done < "$reg"
+	fi
+	log_info 'reconfigure complete; effective on next session start'
+}
+
 # Exec goes through the cws-launch guardian: it rotates config backups
 # (the config-wipe recovery path) and then execs the real launcher.
 autostart_entry() {
@@ -208,10 +250,10 @@ main() {
 	appliance_dry_run=0
 	appliance_force=0
 
-	if [[ ${1:-} == 'doctor' ]]; then
-		mode='doctor'
-		shift
-	fi
+	case "${1:-}" in
+		doctor)      mode='doctor'; shift ;;
+		reconfigure) mode='reconfigure'; shift ;;
+	esac
 
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -290,6 +332,12 @@ main() {
 	if [[ $mode == 'doctor' ]]; then
 		user=$(resolve_target_user "$user") || return 1
 		run_appliance_doctor "$user"
+		return
+	fi
+
+	if [[ $mode == 'reconfigure' ]]; then
+		user=$(resolve_target_user "$user") || return 1
+		run_reconfigure "$user"
 		return
 	fi
 
