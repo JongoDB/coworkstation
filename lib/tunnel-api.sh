@@ -183,11 +183,16 @@ cf_tunnel_get_ingress() {
 ingress_json_add() {
 	local hostname="$1"
 	local port="$2"
+	# Only PATH-LESS rules count as "this hostname already routed":
+	# a /bridge path rule shares the hostname, and the old reconcile
+	# branch updated ITS service in place instead of adding the plain
+	# rule — the member then 404'd everywhere but /bridge (found live).
 	jq --arg h "$hostname" --arg p "$port" '
 		("http://127.0.0.1:" + $p) as $svc
-		| if any(.[]; .hostname == $h and .service == $svc) then .
-		  elif any(.[]; .hostname == $h) then
-			[.[] | if .hostname == $h
+		| if any(.[]; .hostname == $h and .path == null
+			and .service == $svc) then .
+		  elif any(.[]; .hostname == $h and .path == null) then
+			[.[] | if .hostname == $h and .path == null
 			       then .service = $svc else . end]
 		  else
 			[.[] | select(.service != "http_status:404")]

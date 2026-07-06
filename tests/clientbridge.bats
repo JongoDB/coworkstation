@@ -43,6 +43,23 @@ teardown() {
 	[[ $(jq -r '.[-1].service' <<< "$out") == 'http_status:404' ]]
 }
 
+@test "ingress_json_add: plain rule coexists with a path rule (bob 404 bug)" {
+	local base out
+	# the member-add order: bridge path rule exists FIRST
+	base='[{"hostname":"bob-cws.example.com","path":"^/bridge(/.*)?$","service":"http://127.0.0.1:8601"},{"service":"http_status:404"}]'
+	out=$(ingress_json_add bob-cws.example.com 8444 <<< "$base")
+	# path rule untouched
+	[[ $(jq -r '.[0].service' <<< "$out") == 'http://127.0.0.1:8601' ]]
+	[[ $(jq -r '.[0].path' <<< "$out") == '^/bridge(/.*)?$' ]]
+	# plain rule ADDED (not merged into the path rule)
+	[[ $(jq -r '.[1].hostname' <<< "$out") == 'bob-cws.example.com' ]]
+	[[ $(jq -r '.[1] | has("path")' <<< "$out") == 'false' ]]
+	[[ $(jq -r '.[1].service' <<< "$out") == 'http://127.0.0.1:8444' ]]
+	[[ $(jq -r '.[-1].service' <<< "$out") == 'http_status:404' ]]
+	# and it stays idempotent
+	[[ $(ingress_json_add bob-cws.example.com 8444 <<< "$out") == "$out" ]]
+}
+
 @test "ingress_json_add_path: idempotent, reconciles a moved port" {
 	local base once twice moved
 	base='[{"hostname":"cws.example.com","service":"http://127.0.0.1:8443"},{"service":"http_status:404"}]'
