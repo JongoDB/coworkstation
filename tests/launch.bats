@@ -82,6 +82,21 @@ teardown() {
 	[[ $status -eq 0 ]]
 	[[ $output == *'LAUNCHED --some-flag'* ]]
 	[[ -d $CWS_BACKUP_ROOT/claude_desktop_config.json ]]
+	# primary session keeps the default secret store
+	[[ $output != *'--password-store=basic'* ]]
+}
+
+@test "main: extra session forces the plaintext password store" {
+	# An extra session's config home lives under cws-sessions/<N>.
+	export CWS_CLAUDE_CONFIG="$TEST_TMP/cws-sessions/50/Claude"
+	claude_config="$CWS_CLAUDE_CONFIG"
+	mkdir -p "$CWS_CLAUDE_CONFIG"
+	find_launcher() { printf '%s' "$TEST_TMP/fake-launcher"; }
+	printf '#!/bin/bash\necho "LAUNCHED $*"\n' > "$TEST_TMP/fake-launcher"
+	chmod +x "$TEST_TMP/fake-launcher"
+	run main --some-flag
+	[[ $status -eq 0 ]]
+	[[ $output == *'LAUNCHED --password-store=basic --some-flag'* ]]
 }
 
 @test "claude_config: honors XDG_CONFIG_HOME when CWS_CLAUDE_CONFIG unset" {

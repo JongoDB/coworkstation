@@ -97,6 +97,21 @@ find_launcher() {
 	fi
 }
 
+# Extra per-device sessions run on their own private D-Bus (see
+# lib/session.sh's dbus-run-session), whose xdg-desktop-portal exposes a
+# secret-service proxy with no working backend. Electron's default
+# gnome_libsecret probe then blocks at startup and the window never
+# paints. Force Chromium's plaintext 'basic' store so it never calls the
+# secret service. These sessions already cannot persist an encrypted
+# sign-in — the keyring is unavailable there — so this only removes the
+# hang. The primary session is left on the default: its shared user bus
+# has a responsive keyring.
+launcher_flags() {
+	if [[ $claude_config == */cws-sessions/* ]]; then
+		printf '%s' '--password-store=basic'
+	fi
+}
+
 main() {
 	guard_configs
 	clear_stale_singleton
@@ -105,7 +120,10 @@ main() {
 		printf '[cws-launch] ERROR: no Claude Desktop launcher found\n' >&2
 		return 127
 	fi
-	exec "$launcher" "$@"
+	local flags
+	flags=$(launcher_flags)
+	# shellcheck disable=SC2086  # $flags is a deliberate single flag or empty
+	exec "$launcher" $flags "$@"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
