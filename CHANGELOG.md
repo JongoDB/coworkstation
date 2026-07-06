@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Extra-session Claude hung blank on the secret service** — an extra
+  session runs on its own private D-Bus (the `dbus-run-session` that
+  fixes the `:50+` black screen), whose `xdg-desktop-portal` exposes a
+  secret-service proxy with no working backend. Electron's default
+  `gnome_libsecret` probe blocks against it at startup, so the window
+  never paints — distinct from the singleton hang, and only reproducible
+  under the session bus (a bare bus fails the probe fast and loads).
+  `cws-launch` now passes `--password-store=basic` for extra sessions so
+  Electron skips the secret service entirely; these sessions already
+  can't persist an encrypted sign-in, so nothing is lost but the hang.
+  The primary session (responsive keyring on the shared user bus) keeps
+  the default. Found in live client-side validation.
 - **Claude Desktop hung as a blank window after an unclean shutdown** —
   Electron records the running instance in `SingletonLock` (a host-pid
   symlink) with a `SingletonSocket` under `/tmp`. A crash leaves them
