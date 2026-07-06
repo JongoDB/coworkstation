@@ -174,6 +174,17 @@ teardown() {
 	! grep -q '^POST' "$CALL_LOG"
 }
 
+@test "tunnel_api_load_token: rejects placeholder and short tokens" {
+	printf 'YOUR-CF-API-TOKEN' > "$TEST_TMP/placeholder"
+	run tunnel_api_load_token "$TEST_TMP/placeholder"
+	[[ $status -ne 0 ]]
+	[[ $output == *'README placeholder'* ]]
+	printf 'shorty' > "$TEST_TMP/short"
+	run tunnel_api_load_token "$TEST_TMP/short"
+	[[ $status -ne 0 ]]
+	[[ $output == *'~40'* ]]
+}
+
 @test "tunnel_api_load_token: rejects missing and empty files" {
 	run tunnel_api_load_token "$TEST_TMP/absent"
 	[[ $status -ne 0 ]]
@@ -184,7 +195,7 @@ teardown() {
 }
 
 @test "tunnel_api_load_token: fails on verification error" {
-	printf 'bad-token\n' > "$TEST_TMP/token"
+	printf 'bad-token-that-is-long-enough-to-verify\n' > "$TEST_TMP/token"
 	cf_api() { printf '{"success":false,"errors":[{"message":"invalid"}]}'; }
 	run tunnel_api_load_token "$TEST_TMP/token"
 	[[ $status -ne 0 ]]
@@ -196,7 +207,7 @@ teardown() {
 # =============================================================================
 
 @test "tunnel_api_provision: full happy path writes tunnel.conf" {
-	printf 'test-token\n' > "$TEST_TMP/token"
+	printf 'test-token-that-is-long-enough-yes\n' > "$TEST_TMP/token"
 	run_cmd() { printf 'RUN: %s\n' "$*" >> "$CALL_LOG"; }
 	command() {
 		if [[ $1 == '-v' && $2 == 'systemctl' ]]; then

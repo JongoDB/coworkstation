@@ -68,8 +68,20 @@ tunnel_api_load_token() {
 		log_err "token file is empty: $file"
 		return 1
 	fi
+	if [[ $cf_api_token == 'YOUR-CF-API-TOKEN' ]]; then
+		log_err "that's the README placeholder, not a token —" \
+			"put your real Cloudflare API token in $file"
+		return 1
+	fi
+	if [[ ${#cf_api_token} -lt 30 ]]; then
+		log_err "token in $file is ${#cf_api_token} chars —" \
+			'Cloudflare API tokens are ~40; did the paste truncate?'
+		return 1
+	fi
 	cf_call GET /user/tokens/verify > /dev/null || {
-		log_err 'Cloudflare API token failed verification'
+		log_err 'Cloudflare API token failed verification — check it'
+		log_err '  is Active in the dashboard and has the three'
+		log_err '  permissions from the README (Tunnel/Access/DNS)'
 		return 1
 	}
 }

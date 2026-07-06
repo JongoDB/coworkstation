@@ -241,6 +241,18 @@ main() {
 			return 1
 		fi
 		validate_access_allow "$access_allow" || return 1
+		# Fail on a bad token in seconds — not after ten minutes of
+		# package installs. Needs no root; curl/jq are preinstalled
+		# on the supported distros' cloud images (and rechecked by
+		# install_base_deps for the rest of the run).
+		if [[ $mode != 'doctor' ]] \
+			&& command -v curl > /dev/null 2>&1 \
+			&& command -v jq > /dev/null 2>&1; then
+			log_info "plan: hostname=$hostname"
+			log_info "plan: access allow-list=$access_allow"
+			log_info 'preflight: verifying the Cloudflare API token'
+			tunnel_api_load_token "$token_file" || return 1
+		fi
 	fi
 
 	if [[ $mode == 'doctor' ]]; then
