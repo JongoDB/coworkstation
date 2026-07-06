@@ -125,6 +125,10 @@ launcher_flags() {
 # store triggers gnome-keyring's own create/unlock dialog in the session.
 # The member owns the passphrase (self-service). A cancel or a missing
 # secret-tool falls through to today's non-persistent behaviour.
+#
+# The store blocks on the dialog, which is the point (unlock before
+# Claude), but a member who walks away must not wedge the launch — so it
+# is bounded by a timeout, after which Claude starts without persistence.
 prepare_keyring() {
 	[[ $claude_config == */cws-sessions/* ]] && return 0
 	command -v secret-tool > /dev/null 2>&1 || return 0
@@ -134,7 +138,10 @@ prepare_keyring() {
 		dbus-update-activation-environment DISPLAY XAUTHORITY \
 			2> /dev/null || true
 	fi
-	printf '' | secret-tool store --label='Login' \
+	local store='secret-tool'
+	command -v timeout > /dev/null 2>&1 && store='timeout 120 secret-tool'
+	# shellcheck disable=SC2086  # $store is a deliberate command prefix
+	printf '' | $store store --label='Login' \
 		xdg:schema org.coworkstation.Login app claude \
 		> /dev/null 2>&1 || true
 }
