@@ -166,6 +166,14 @@ if [ "$dnum" -ge 50 ] 2> /dev/null; then
 		cp "$HOME/.config/autostart/claude-desktop.desktop" \
 			"$XDG_CONFIG_HOME/autostart/"
 	fi
+	# All sessions of one member share the systemd user D-Bus bus
+	# (/run/user/<uid>/bus). xfce4-session's org.xfce.SessionManager is
+	# a per-bus singleton, so a second desktop on that shared bus finds
+	# the name already owned by the primary and exits at once — the X
+	# server keeps running, so the client just sees a black screen.
+	# Give each extra session its own private bus so its full desktop
+	# (xfce4-session, panel, and Claude) can start beside the primary.
+	exec dbus-run-session -- startxfce4
 fi
 exec startxfce4
 EOF

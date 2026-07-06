@@ -7,6 +7,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Extra per-device sessions (`:50+`) rendered a black screen** — the
+  X server came up but no desktop. All of one member's sessions
+  inherit the systemd user D-Bus bus (`/run/user/<uid>/bus`), and
+  `xfce4-session`'s `org.xfce.SessionManager` is a per-bus singleton,
+  so the second desktop found the name already owned by the primary
+  and exited immediately. The per-session `XDG_CONFIG_HOME` fixes
+  Claude's config-dir lock but not xfce's D-Bus lock. The xstartup
+  now launches `:50+` under `dbus-run-session` so each extra session
+  gets its own private bus. Found in live client-side validation.
 - **Member/extra-session hostnames flatten to one label below the
   zone** (`bob-cws.zone` instead of `bob.cws.zone`): Cloudflare's
   free Universal SSL only covers one subdomain level, so the dotted

@@ -166,3 +166,41 @@ teardown() {
 	[[ $output == *'no .deb at'* ]]
 	[[ $output == *'--profile xrdp'* ]]
 }
+
+# Stub startxfce4 and dbus-run-session on PATH so we can run the
+# generated xstartup and observe which launch path it takes.
+_xstartup_stub_bin() {
+	local dir="$TEST_TMP/bin"
+	mkdir -p "$dir"
+	printf '%s\n' '#!/bin/sh' 'echo STARTXFCE4' > "$dir/startxfce4"
+	printf '%s\n' '#!/bin/sh' 'echo DBUS-RUN-SESSION' \
+		'[ "$1" = "--" ] && shift' 'exec "$@"' > "$dir/dbus-run-session"
+	chmod +x "$dir/startxfce4" "$dir/dbus-run-session"
+	printf '%s' "$dir"
+}
+
+@test "kasmvnc_xstartup: primary session launches xfce directly" {
+	local bin
+	bin=$(_xstartup_stub_bin)
+	kasmvnc_xstartup > "$TEST_TMP/xstartup"
+	run env PATH="$bin:$PATH" HOME="$TEST_TMP" DISPLAY=:1 \
+		sh "$TEST_TMP/xstartup"
+	[[ $status -eq 0 ]]
+	[[ $output == *STARTXFCE4* ]]
+	# the primary owns the shared user bus; no private bus needed
+	[[ $output != *DBUS-RUN-SESSION* ]]
+}
+
+@test "kasmvnc_xstartup: extra session isolates its own D-Bus bus" {
+	local bin
+	bin=$(_xstartup_stub_bin)
+	kasmvnc_xstartup > "$TEST_TMP/xstartup"
+	# A shared bus is present, as inherited from the systemd user
+	# manager — the condition that starves the second xfce4-session.
+	run env PATH="$bin:$PATH" HOME="$TEST_TMP" DISPLAY=:50 \
+		DBUS_SESSION_BUS_ADDRESS="unix:path=$TEST_TMP/shared-bus" \
+		sh "$TEST_TMP/xstartup"
+	[[ $status -eq 0 ]]
+	# xfce must run under a fresh private bus, before startxfce4
+	[[ $output == *DBUS-RUN-SESSION*STARTXFCE4* ]]
+}
