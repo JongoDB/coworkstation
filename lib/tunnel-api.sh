@@ -425,6 +425,71 @@ cf_access_remove_app() {
 }
 
 # Persist the api-mode deployment shape for member.sh and the doctor.
+# Connector unit generator: our OWN unit name, token via a 0600
+# EnvironmentFile (cloudflared reads TUNNEL_TOKEN) — never on argv.
+cws_cloudflared_unit() {
+	cat << 'EOF'
+[Unit]
+Description=Coworkstation tunnel connector (cloudflared)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/coworkstation/tunnel-token
+ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+# Install the session-tunnel connector under cws-cloudflared.service.
+# NEVER the distro unit name: an operator's pre-existing
+# cloudflared.service (an SSH tunnel, say) made the old
+# is-active-check skip our install entirely — the session hostnames
+# then 530/1033 the moment anything actually needs the tunnel (found
+# live; Access had been answering at the edge and masking it).
+# A pre-existing cloudflared.service carrying OUR tunnel's token
+# (earlier installs used `cloudflared service install`) is disabled;
+# one carrying a foreign token is left alone and noted.
+# Args: connector_token tunnel_id
+tunnel_api_install_connector() {
+	local conn_token="$1"
+	local tunnel="$2"
+	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
+		printf 'DRY-RUN: install cws-cloudflared.service (tunnel %s)\n' \
+			"$tunnel"
+		return 0
+	fi
+	printf 'TUNNEL_TOKEN=%s\n' "$conn_token" \
+		| appliance_force=1 write_file "$appliance_etc/tunnel-token" 600 \
+		|| return 1
+	cws_cloudflared_unit \
+		| write_file \
+			"${APPLIANCE_SYSTEMD_DIR:-/etc/systemd/system}/cws-cloudflared.service" \
+		|| return 1
+	# Migrate/coexist with a pre-existing distro-named service.
+	if systemctl list-unit-files cloudflared.service \
+		--no-legend 2> /dev/null | grep -q .; then
+		local old_t
+		old_t=$(systemctl cat cloudflared 2> /dev/null \
+			| grep -oP -- '--token \K\S+' | head -1 \
+			| base64 -d 2> /dev/null | jq -r '.t // empty' 2> /dev/null)
+		if [[ $old_t == "$tunnel" ]]; then
+			log_info 'migrating old cloudflared.service (same tunnel)' \
+				'to cws-cloudflared.service'
+			run_cmd systemctl disable --now cloudflared.service
+		elif [[ -n $old_t ]]; then
+			log_info "leaving cloudflared.service alone (foreign" \
+				"tunnel ${old_t:0:8}…, e.g. your own SSH tunnel)"
+		fi
+	fi
+	run_cmd systemctl daemon-reload || return 1
+	run_cmd systemctl enable --now cws-cloudflared.service
+}
+
 # Args: tunnel_id account_id zone_id zone_name token_file allow_csv
 tunnel_api_write_conf() {
 	{
@@ -532,24 +597,9 @@ tunnel_api_provision() {
 	tunnel_api_write_conf "$tunnel" "$account" "$zone_id" \
 		"$zone_name" "$token_file" "$allow_csv" || return 1
 
-	# Connector install. The token lands in the systemd unit that
-	# `cloudflared service install` writes; the brief argv exposure
-	# is root-local on a box we just provisioned as root.
 	local conn_token
 	conn_token=$(cf_tunnel_token "$account" "$tunnel") || return 1
-	if command -v systemctl > /dev/null 2>&1 \
-		&& systemctl is-active --quiet cloudflared; then
-		log_info 'cloudflared service already active'
-	else
-		run_cmd cloudflared service install "$conn_token" || return 1
-		# cloudflared writes the connector token into the unit file it
-		# generates (default 0644). On a multi-user box that exposes the
-		# token to every member; lock it to root-only.
-		if [[ ${appliance_dry_run:-0} -ne 1 ]]; then
-			chmod 600 /etc/systemd/system/cloudflared.service \
-				2> /dev/null || true
-		fi
-	fi
+	tunnel_api_install_connector "$conn_token" "$tunnel" || return 1
 	log_info "zero-touch tunnel ready: https://$hostname"
 	log_info "  Access allow list: $allow_csv"
 }

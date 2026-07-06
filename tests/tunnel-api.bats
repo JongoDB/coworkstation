@@ -208,6 +208,8 @@ teardown() {
 
 @test "tunnel_api_provision: full happy path writes tunnel.conf" {
 	printf 'test-token-that-is-long-enough-yes\n' > "$TEST_TMP/token"
+	export APPLIANCE_SYSTEMD_DIR="$TEST_TMP/systemd"
+	mkdir -p "$APPLIANCE_SYSTEMD_DIR"
 	run_cmd() { printf 'RUN: %s\n' "$*" >> "$CALL_LOG"; }
 	command() {
 		if [[ $1 == '-v' && $2 == 'systemctl' ]]; then
@@ -226,8 +228,14 @@ teardown() {
 	grep -q '^tunnel_id=tun-1$' "$conf"
 	grep -q '^zone_name=example.com$' "$conf"
 	grep -q '^access_allow=alice@example.com$' "$conf"
-	# connector installed with the tunnel token
-	grep -q 'RUN: cloudflared service install conn-token' "$CALL_LOG"
+	# connector installed under OUR unit with the token in the env
+	# file (never `cloudflared service install` / the distro unit)
+	grep -q 'RUN: systemctl enable --now cws-cloudflared.service' \
+		"$CALL_LOG"
+	grep -q '^TUNNEL_TOKEN=conn-token$' "$APPLIANCE_ETC/tunnel-token"
+	[[ $(stat -c %a "$APPLIANCE_ETC/tunnel-token") == 600 ]]
+	grep -q 'EnvironmentFile=/etc/coworkstation/tunnel-token' \
+		"$APPLIANCE_SYSTEMD_DIR/cws-cloudflared.service"
 	# DNS + Access app + policy all created
 	grep -q 'POST /zones/zone-1/dns_records' "$CALL_LOG"
 	grep -q 'POST /accounts/acct-1/access/apps ' "$CALL_LOG" \

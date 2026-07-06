@@ -190,10 +190,39 @@ apl_check_tunnel_service() {
 		_apl_warn 'cloudflared not installed (overlay profile?)'
 		return
 	fi
-	if systemctl is-active --quiet cloudflared 2> /dev/null; then
-		_apl_pass 'cloudflared service active'
+	if systemctl is-active --quiet cws-cloudflared 2> /dev/null \
+		|| systemctl is-active --quiet cloudflared 2> /dev/null; then
+		_apl_pass 'tunnel connector service active'
 	else
-		_apl_fail 'cloudflared installed but service not active'
+		_apl_fail 'cloudflared installed but no connector service' \
+			'active (cws-cloudflared / cloudflared)'
+	fi
+}
+
+# A locally-active connector can be serving the WRONG tunnel (found
+# live: a pre-existing SSH-tunnel service owned the unit name and
+# every session hostname 530'd). Ask Cloudflare how many live
+# connections OUR tunnel actually has — the only check that cannot
+# be fooled by unit names.
+apl_check_tunnel_connections() {
+	local tconf="$appliance_etc/tunnel.conf"
+	[[ -f $tconf ]] && grep -qE '^mode=api$' "$tconf" || return 0
+	local account tunnel resp conns
+	account=$(tunnel_conf_get account_id 2> /dev/null)
+	tunnel=$(tunnel_conf_get tunnel_id 2> /dev/null)
+	[[ -n $account && -n $tunnel ]] || return 0
+	if ! resp=$(cf_call GET \
+		"/accounts/$account/cfd_tunnel/$tunnel" 2> /dev/null); then
+		_apl_warn 'could not query tunnel connection state'
+		return 0
+	fi
+	conns=$(jq '.connections | length' <<< "$resp" 2> /dev/null)
+	if [[ $conns =~ ^[0-9]+$ && $conns -gt 0 ]]; then
+		_apl_pass "session tunnel has $conns live connection(s)"
+	else
+		_apl_fail 'session tunnel has NO live connections —' \
+			'hostnames will return 530/1033; is cws-cloudflared' \
+			'running with the RIGHT token? re-run setup'
 	fi
 }
 
@@ -302,6 +331,7 @@ run_appliance_doctor() {
 	apl_check_tunnel_config /etc/cloudflared/config.yml
 	apl_check_access_coverage
 	apl_check_tunnel_service
+	apl_check_tunnel_connections
 	apl_check_unattended_upgrades
 
 	printf -- '-- %d failure(s)\n' "$_apl_failures"
