@@ -297,6 +297,13 @@ main() {
 	install_session_stack || return 1
 	install_engine || return 1
 
+	# Cowork's microVM runs as the session user; /dev/kvm is
+	# root:kvm 0660, so group membership is required (found live:
+	# device present, user still got permission denied).
+	if [[ -e ${APPLIANCE_DEV_KVM:-/dev/kvm} ]]; then
+		run_cmd usermod -aG kvm "$user" || return 1
+	fi
+
 	# Record the deployment shape for member.sh and the doctor.
 	{
 		printf 'profile=%s\n' "$profile"

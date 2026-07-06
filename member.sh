@@ -243,6 +243,9 @@ cmd_add() {
 	fi
 
 	install_slice_quota "$name" "$mem" "$cpu" || return 1
+	if [[ -e ${APPLIANCE_DEV_KVM:-/dev/kvm} ]]; then
+		run_cmd usermod -aG kvm "$name" || return 1
+	fi
 	# Mirror profile_kasmvnc_apply exactly: the cert and control user are
 	# mandatory. Without them write_service's `enable --now` starts a
 	# vncserver that either exits 1 (no cert) or loops forever on the

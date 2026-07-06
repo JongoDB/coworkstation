@@ -40,8 +40,28 @@ apl_check_engine_conf() {
 		_apl_fail 'engine.conf says kvm but /dev/kvm is absent'
 	fi
 	if [[ $backend == 'none' ]]; then
-		_apl_warn 'Cowork VM feature is unavailable (no /dev/kvm;' \
-			'official engine keeps the unmodified binary)'
+		if [[ -e ${APPLIANCE_DEV_KVM:-/dev/kvm} ]]; then
+			_apl_warn '/dev/kvm EXISTS but engine.conf says' \
+				'backend=none (KVM appeared after install?) —' \
+				're-run setup to record backend=kvm'
+		else
+			_apl_warn 'Cowork VM feature is unavailable (no' \
+				'/dev/kvm; official engine keeps the unmodified binary)'
+		fi
+	fi
+}
+
+# Cowork runs its microVM as the SESSION user — /dev/kvm existing
+# is not enough; the user must be able to open it (kvm group).
+apl_check_kvm_access() {
+	local user="$1"
+	[[ -e ${APPLIANCE_DEV_KVM:-/dev/kvm} ]] || return 0
+	if id -nG "$user" 2> /dev/null | tr ' ' '\n' | grep -qx kvm; then
+		_apl_pass "$user is in the kvm group (Cowork VM can start)"
+	else
+		_apl_fail "$user cannot open /dev/kvm (not in the kvm" \
+			'group) — Cowork VM will fail; re-run setup or:' \
+			"usermod -aG kvm $user (then restart their session)"
 	fi
 }
 
@@ -271,6 +291,7 @@ run_appliance_doctor() {
 	printf '== coworkstation doctor ==\n'
 	apl_check_engine_conf "$appliance_etc/engine.conf"
 	apl_check_engine_installed
+	apl_check_kvm_access "$user"
 	apl_check_session_layer "$user"
 	apl_check_keyring "$user"
 	if command -v ss > /dev/null 2>&1; then
