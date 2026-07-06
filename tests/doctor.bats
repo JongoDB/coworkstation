@@ -72,6 +72,17 @@ LISTEN 0 511 0.0.0.0:80 0.0.0.0:*'
 	[[ $output != *'no ports bound beyond loopback'* ]]
 }
 
+@test "public_binds: ss -tunp layout (Netid col) parses local addr" {
+	# with -u, ss prepends tcp/udp; the random QUIC port is only
+	# recognizable by the syncthing owner, and a session port must
+	# still FAIL from the shifted column
+	local ss='udp UNCONN 0 0 0.0.0.0:37215 0.0.0.0:* users:(("syncthing",pid=9,fd=30))
+tcp LISTEN 0 4096 0.0.0.0:8444 0.0.0.0:* users:(("Xkasmvnc",pid=8,fd=5))'
+	run apl_check_public_binds "$ss"
+	[[ $output == *'ClientSync (Syncthing) listens on 0.0.0.0:37215'* ]]
+	[[ $output == *'session port bound publicly: 0.0.0.0:8444'* ]]
+}
+
 @test "public_binds: clean loopback-only box gives the strong PASS" {
 	local ss='LISTEN 0 128 127.0.0.1:8443 0.0.0.0:*'
 	run apl_check_public_binds "$ss"

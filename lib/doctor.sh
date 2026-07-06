@@ -85,7 +85,14 @@ apl_check_public_binds() {
 	local bad=0 exposed=0 line laddr port
 	while IFS= read -r line; do
 		[[ -z $line ]] && continue
-		laddr=$(awk '{print $4}' <<< "$line")
+		# `ss -ltn` has State in field 1 (local addr = $4); adding -u
+		# prepends a Netid (tcp/udp) column, shifting local addr to
+		# $5. Detect the shift instead of hard-coding a position.
+		if [[ $line == tcp\ * || $line == udp\ * ]]; then
+			laddr=$(awk '{print $5}' <<< "$line")
+		else
+			laddr=$(awk '{print $4}' <<< "$line")
+		fi
 		port="${laddr##*:}"
 		# Loopback binds are always fine — the WHOLE 127.0.0.0/8
 		# range (systemd-resolved uses 127.0.0.53), the interface
@@ -93,30 +100,32 @@ apl_check_public_binds() {
 		case "$laddr" in
 			127.*|'[::1]'*:*|'[::ffff:127.'*) continue ;;
 		esac
-		# Anything else is a public listener. Classify by port: a
-		# session port publicly bound is a hard FAIL (the whole
-		# zero-inbound premise); Syncthing's 22000/21027 are expected
-		# for ClientSync and only reachable on a LAN (TLS +
-		# device-authenticated), so WARN not FAIL; anything else
-		# public is unexpected and flagged.
+		# Anything else is a public listener. A session port bound
+		# publicly is a hard FAIL (the whole zero-inbound premise).
+		# Syncthing (ClientSync) is expected and LAN-only reachable
+		# (TLS + paired-device auth); it uses 22000/21027 plus a
+		# random per-install QUIC port, so match by OWNER when ss was
+		# run with -p (root), falling back to the fixed ports.
+		# Everything else public is unexpected and surfaced.
 		case "$port" in
 			3389|59[0-9][0-9]|84[4-9][0-9]|85[0-9][0-9])
 				_apl_fail "session port bound publicly: $laddr" \
 					'— the box is meant to bind sessions to loopback'
 				bad=1
-				;;
-			22000|21027)
-				_apl_warn "ClientSync (Syncthing) listens on $laddr" \
-					'— fine behind the tunnel (LAN-only, encrypted,' \
-					'paired-device auth); no inbound port is forwarded'
-				exposed=1
-				;;
-			*)
-				_apl_warn "unexpected public listener: $laddr" \
-					'— confirm nothing forwards an inbound port to it'
-				exposed=1
+				continue
 				;;
 		esac
+		if [[ $line == *'"syncthing"'* || $port == 22000 \
+			|| $port == 21027 ]]; then
+			_apl_warn "ClientSync (Syncthing) listens on $laddr" \
+				'— fine behind the tunnel (LAN-only, encrypted,' \
+				'paired-device auth); no inbound port is forwarded'
+			exposed=1
+		else
+			_apl_warn "unexpected public listener: $laddr" \
+				'— confirm nothing forwards an inbound port to it'
+			exposed=1
+		fi
 	done <<< "$ss_output"
 	if [[ $bad -eq 0 && $exposed -eq 0 ]]; then
 		_apl_pass 'no ports bound beyond loopback'
@@ -344,7 +353,10 @@ run_appliance_doctor() {
 	apl_check_session_layer "$user"
 	apl_check_keyring "$user"
 	if command -v ss > /dev/null 2>&1; then
-		apl_check_public_binds "$(ss -Hltn 2> /dev/null)"
+		# -u/-p: include UDP (Syncthing discovery/QUIC) and the
+		# owning process so listeners are recognized by owner, not
+		# just port. -p needs root; harmless (no owner column) if not.
+		apl_check_public_binds "$(ss -Hltunp 2> /dev/null)"
 	else
 		_apl_warn 'ss not available; skipping public-bind scan'
 	fi
