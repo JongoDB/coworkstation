@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **colord PolicyKit prompt on every session start** — a kasmVNC/xrdp
+  desktop is not a logind "local"/"active" seat, so colord's
+  device/profile actions fell through to the admin-auth rule and popped
+  "Authentication is required to create a color managed device". Setup
+  now installs a polkit rule (`/etc/polkit-1/rules.d/40-cws-colord.rules`)
+  granting the `org.freedesktop.color-manager.*` action group — a
+  headless appliance does no colour management. Found in live validation.
+
 - **Extra-session Claude hung blank on the secret service** — an extra
   session runs on its own private D-Bus (the `dbus-run-session` that
   fixes the `:50+` black screen), whose `xdg-desktop-portal` exposes a
