@@ -346,18 +346,31 @@ cmd_remove() {
 
 	run_cmd loginctl terminate-user "$name"
 	run_cmd loginctl disable-linger "$name"
+	# terminate-user is async; userdel races the dying user manager
+	# ('user X is currently used by process') — seen live. Give it a
+	# moment, then force what's left.
+	if [[ ${appliance_dry_run:-0} -ne 1 ]]; then
+		local tries=0
+		while pgrep -u "$name" > /dev/null 2>&1 && [[ $tries -lt 10 ]]; do
+			sleep 1
+			tries=$((tries + 1))
+		done
+		pgrep -u "$name" > /dev/null 2>&1 && run_cmd pkill -9 -u "$name"
+		sleep 1
+	fi
 
-	local base
+	local base member_host
 	if base=$(appliance_base_hostname) && [[ -n $base ]]; then
+		member_host=$(tunnel_api_child_hostname "$name" "$base")
 		if [[ $(tunnel_conf_get mode 2> /dev/null) == 'api' ]]; then
 			if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
 				printf 'DRY-RUN: api ingress+dns+access removal for %s\n' \
-					"$name.$base"
+					"$member_host"
 			else
-				tunnel_api_member_remove "$name.$base" || return 1
+				tunnel_api_member_remove "$member_host" || return 1
 			fi
 		else
-			apply_ingress_transform ingress_remove "$name.$base" \
+			apply_ingress_transform ingress_remove "$member_host" \
 				|| return 1
 		fi
 	fi
