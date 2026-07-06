@@ -83,6 +83,7 @@ apl_check_engine_installed() {
 apl_check_public_binds() {
 	local ss_output="$1"
 	local bad=0 exposed=0 line laddr port
+	local seen=' '
 	while IFS= read -r line; do
 		[[ -z $line ]] && continue
 		# `ss -ltn` has State in field 1 (local addr = $4); adding -u
@@ -94,6 +95,9 @@ apl_check_public_binds() {
 			laddr=$(awk '{print $4}' <<< "$line")
 		fi
 		port="${laddr##*:}"
+		# One socket can appear per-pid/fd; report each address once.
+		[[ $seen == *" $laddr "* ]] && continue
+		seen+="$laddr "
 		# Loopback binds are always fine — the WHOLE 127.0.0.0/8
 		# range (systemd-resolved uses 127.0.0.53), the interface
 		# suffix ss appends (127.0.0.53%lo), and IPv6 loopback.
@@ -353,10 +357,13 @@ run_appliance_doctor() {
 	apl_check_session_layer "$user"
 	apl_check_keyring "$user"
 	if command -v ss > /dev/null 2>&1; then
-		# -u/-p: include UDP (Syncthing discovery/QUIC) and the
-		# owning process so listeners are recognized by owner, not
-		# just port. -p needs root; harmless (no owner column) if not.
-		apl_check_public_binds "$(ss -Hltunp 2> /dev/null)"
+		# TCP listeners only: those are the actual services. (UDP
+		# would drag in every ephemeral socket, and kasmVNC's own
+		# WebRTC UDP on the session port would misread as an exposed
+		# session port — the TCP websocket path is what must be
+		# loopback.) -p adds the owning process (needs root; harmless
+		# without) so listeners are recognized by owner, not just port.
+		apl_check_public_binds "$(ss -Hltnp 2> /dev/null)"
 	else
 		_apl_warn 'ss not available; skipping public-bind scan'
 	fi
