@@ -103,6 +103,54 @@ Only after the spike confirms the wiring do we finalize the
 implementation (package + session step + tests) and ship it the same
 way as the other fixes (lint + BATS green, PR, deploy).
 
+## Spike findings (2026-07-06)
+
+Grounded on the live box, and they **refine the architecture**:
+
+- `gcr4` + `/usr/libexec/gcr-prompter` are installed, and
+  `org.gnome.keyring.SystemPrompter.service` is a valid D-Bus
+  activation file (`Exec=/usr/libexec/gcr-prompter`). So the prompter
+  is activatable — it is not a missing-package problem.
+- `ReadAlias("default")` returns object path `/` — there is **no
+  default collection**, and it is **not** aliased to the ephemeral
+  session collection. So a store to the default *would* create a login
+  keyring and prompt; nothing is silently swallowing it into `session`.
+- Therefore the silent fallback is two things: (1) an activated
+  `gcr-prompter` has no `DISPLAY`/`XAUTHORITY` in the D-Bus activation
+  environment, so its dialog cannot render on the VNC display; and
+  (2) **Electron gates on `isEncryptionAvailable` up front** — with no
+  default collection that returns `false`, so Claude never performs the
+  store that would trigger the create-prompt. Chicken-and-egg: no
+  collection → no prompt → no collection.
+- `secret-tool` is **not** installed (`libsecret-tools`); it is the
+  natural way to trigger a keyring create/unlock from a session hook.
+
+### Revised architecture
+
+1. **Export the prompter's environment.** At session start, run
+   `dbus-update-activation-environment DISPLAY XAUTHORITY` (XFCE does
+   not do this for us) so an activated `gcr-prompter` renders on the
+   VNC display.
+2. **Create/unlock the login keyring proactively at session start**,
+   before Claude checks — do not rely on Claude to trigger it. A
+   session hook stores a marker secret to the default collection (e.g.
+   via `secret-tool store`, which requires adding `libsecret-tools` to
+   the session stack); with no login keyring present, gnome-keyring
+   prompts the member to *create* a password (later sessions: *unlock*).
+   Once the keyring exists and is unlocked, Claude's
+   `isEncryptionAvailable` returns true and sign-in persists.
+3. Scope and degradation unchanged from above.
+
+### Remaining risk / next step
+
+The create-prompt + persist loop must still be **verified live**
+(trigger at session start → confirm the dialog renders on `:1` →
+confirm `login.keyring` is written and `isEncryptionAvailable=true` →
+confirm sign-in survives a restart). This needs `libsecret-tools`
+installed and a browser to observe/answer the prompt, ideally on a box
+that is not mid-reboot. Recommend implementing the session hook behind
+this verified loop rather than shipping blind.
+
 ## Out of scope
 
 - Empty-password / plaintext keyrings (rejected: not production-grade).
