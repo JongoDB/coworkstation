@@ -211,6 +211,10 @@ reconfigure_user() {
 run_reconfigure() {
 	local user="$1"
 	require_root || return 1
+	# The whole point is to REPLACE stale config, but write_file keeps
+	# existing files unless forced — so force it here (these are all
+	# generated files, safe to rewrite). Local so it does not leak.
+	local appliance_force=1
 	local conf="$appliance_etc/appliance.conf"
 	local profile
 	profile=$(grep -m1 '^profile=' "$conf" 2> /dev/null | cut -d= -f2)
