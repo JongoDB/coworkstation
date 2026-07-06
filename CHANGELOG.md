@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Claude Desktop hung as a blank window after an unclean shutdown** —
+  Electron records the running instance in `SingletonLock` (a host-pid
+  symlink) with a `SingletonSocket` under `/tmp`. A crash leaves them
+  behind; on reboot `/tmp` is wiped and the recorded pid is often
+  reused by another process (frequently the primary session's Claude),
+  so Electron thinks the profile is already owned, tries to hand off to
+  the vanished socket, and hangs before painting. `cws-launch` now
+  clears the stale singleton trio when its socket target is dangling
+  (a live owner's socket exists, so this never races a real instance).
+  The guardian also now honors `XDG_CONFIG_HOME`, so it guards and
+  heals each extra session's own config home rather than always the
+  primary's. Found in live client-side validation.
 - **Extra per-device sessions (`:50+`) rendered a black screen** — the
   X server came up but no desktop. All of one member's sessions
   inherit the systemd user D-Bus bus (`/run/user/<uid>/bus`), and
