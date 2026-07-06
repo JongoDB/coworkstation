@@ -67,3 +67,24 @@ teardown() {
 	install_polkit_rules
 	[[ "$(cat "$TEST_TMP/target")" == '/etc/polkit-1/rules.d/40-cws-colord.rules' ]]
 }
+
+@test "reconfigure_user: regenerates the session config and autostart" {
+	profile_kasmvnc_write_config() { echo "wc $1 $2" >> "$TEST_TMP/calls"; }
+	install_autostart() { echo "as $1" >> "$TEST_TMP/calls"; }
+	reconfigure_user alice 8443 kasmvnc
+	grep -qx 'wc alice 8443' "$TEST_TMP/calls"
+	grep -qx 'as alice' "$TEST_TMP/calls"
+}
+
+@test "run_reconfigure: applies polkit + primary + every member" {
+	mkdir -p "$APPLIANCE_ETC"
+	printf 'profile=kasmvnc\n' > "$APPLIANCE_ETC/appliance.conf"
+	printf 'bob\t2\t8444\t2G\t150\n' > "$APPLIANCE_ETC/members.tsv"
+	require_root() { return 0; }
+	install_polkit_rules() { echo polkit >> "$TEST_TMP/calls"; }
+	reconfigure_user() { echo "ru $1 $2 $3" >> "$TEST_TMP/calls"; }
+	run_reconfigure cws
+	grep -qx 'polkit' "$TEST_TMP/calls"
+	grep -qx 'ru cws 8443 kasmvnc' "$TEST_TMP/calls"
+	grep -qx 'ru bob 8444 kasmvnc' "$TEST_TMP/calls"
+}

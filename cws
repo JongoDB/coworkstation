@@ -20,6 +20,7 @@
 #   cws ssh-config [flags]        managed-settings sshConfigs JSON
 #   cws credentials [NAME]        show a user's kasmVNC sign-in
 #   cws update                    update the installed tree (git)
+#   cws reconfigure               re-apply config after an update
 #   cws version | cws help
 #
 # cws is porcelain: the underlying scripts stay directly callable and
@@ -214,7 +215,10 @@ cmd_update() {
 			're-run the installer to update'
 		return 1
 	fi
-	git -C "$cws_dir" pull --ff-only
+	git -C "$cws_dir" pull --ff-only || return 1
+	# The pull only refreshes the tree; config a fix writes to /etc or a
+	# user's home lands on the next reconfigure.
+	printf 'next: sudo cws reconfigure  (apply any config changes)\n'
 }
 
 # Show the kasmVNC sign-in for a user. Reading another user's file
@@ -353,6 +357,7 @@ main() {
 		testbench)   exec "$cws_dir/testbench/setup.sh" "$@" ;;
 		credentials) cmd_credentials "$@" ;;
 		update)      cmd_update ;;
+		reconfigure) exec "$cws_dir/setup.sh" reconfigure "$@" ;;
 		version|--version|-V) cmd_version ;;
 		help|--help|-h) usage ;;
 		'')
