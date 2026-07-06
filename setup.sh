@@ -113,8 +113,10 @@ enable_unattended_upgrades() {
 }
 
 install_session_stack() {
+	# libsecret-tools (secret-tool) lets cws-launch create/unlock the
+	# login keyring at session start so Claude's sign-in persists.
 	pkg_install xfce4 xfce4-terminal dbus-x11 \
-		gnome-keyring libsecret-1-0 libpam-gnome-keyring
+		gnome-keyring libsecret-1-0 libsecret-tools libpam-gnome-keyring
 }
 
 # A kasmVNC/xrdp desktop is not a logind "local"/"active" seat, so

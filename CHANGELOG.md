@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Persistent, passphrase-protected sign-in.** Claude's "sign-in won't
+  be saved" came from having no usable secret store: a VNC/RDP desktop
+  is not a PAM login, so gnome-keyring never created a login keyring,
+  and XFCE never put `DISPLAY`/`XAUTHORITY` in the D-Bus activation
+  environment, so its `gcr` unlock prompt could not render. `cws-launch`
+  now (for primary/member sessions) exports that environment and asks
+  gnome-keyring to create-or-unlock the login keyring before Claude
+  starts; the member sets and enters their own passphrase in-session
+  (self-service), and sign-in then persists encrypted at rest. Extra
+  `cws-sessions/<N>` device sessions are unchanged (`--password-store=
+  basic`; they are the same person on a second device, so there is no
+  principal to isolate). Design + threat model:
+  `docs/plans/2026-07-06-session-keyring-design.md`.
+
 ### Fixed
 
 - **colord PolicyKit prompt on every session start** — a kasmVNC/xrdp

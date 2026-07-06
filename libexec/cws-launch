@@ -112,9 +112,37 @@ launcher_flags() {
 	fi
 }
 
+# Create-or-unlock the login keyring so Electron safeStorage works and
+# Claude's sign-in persists ENCRYPTED at rest, before Claude checks (it
+# gates on isEncryptionAvailable up front). Primary/member sessions only:
+# they run on the shared user bus where gnome-keyring runs and one login
+# keyring is shared across all of a user's sessions. Extra cws-sessions/N
+# desktops are on a private bus with no keyring daemon — they stay on
+# --password-store=basic (launcher_flags) and are skipped here.
+#
+# XFCE does not export the display into the D-Bus activation environment,
+# so an activated gcr-prompter cannot render; export it, then a marker
+# store triggers gnome-keyring's own create/unlock dialog in the session.
+# The member owns the passphrase (self-service). A cancel or a missing
+# secret-tool falls through to today's non-persistent behaviour.
+prepare_keyring() {
+	[[ $claude_config == */cws-sessions/* ]] && return 0
+	command -v secret-tool > /dev/null 2>&1 || return 0
+	: "${XAUTHORITY:=$HOME/.Xauthority}"
+	export DISPLAY XAUTHORITY
+	if command -v dbus-update-activation-environment > /dev/null 2>&1; then
+		dbus-update-activation-environment DISPLAY XAUTHORITY \
+			2> /dev/null || true
+	fi
+	printf '' | secret-tool store --label='Login' \
+		xdg:schema org.coworkstation.Login app claude \
+		> /dev/null 2>&1 || true
+}
+
 main() {
 	guard_configs
 	clear_stale_singleton
+	prepare_keyring
 	local launcher
 	if ! launcher=$(find_launcher); then
 		printf '[cws-launch] ERROR: no Claude Desktop launcher found\n' >&2
