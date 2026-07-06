@@ -83,3 +83,38 @@ teardown() {
 	[[ $output == *'LAUNCHED --some-flag'* ]]
 	[[ -d $CWS_BACKUP_ROOT/claude_desktop_config.json ]]
 }
+
+@test "claude_config: honors XDG_CONFIG_HOME when CWS_CLAUDE_CONFIG unset" {
+	# Extra sessions redirect XDG_CONFIG_HOME; the guardian must guard and
+	# heal that config home, not the primary's ~/.config/Claude.
+	run env -u CWS_CLAUDE_CONFIG XDG_CONFIG_HOME=/xdg bash -c \
+		"source '$SCRIPT_DIR/../libexec/cws-launch'; printf %s \"\$claude_config\""
+	[[ $output == '/xdg/Claude' ]]
+}
+
+@test "clear_stale_singleton: clears the trio when the socket is dangling" {
+	# Post-reboot: /tmp is wiped so the socket target is gone, and the
+	# recorded pid may be reused — the reboot-crash blank-window case.
+	ln -s "$TEST_TMP/gone/SingletonSocket" "$CWS_CLAUDE_CONFIG/SingletonSocket"
+	ln -s 'cws-1774' "$CWS_CLAUDE_CONFIG/SingletonLock"
+	ln -s '5740472022340416155' "$CWS_CLAUDE_CONFIG/SingletonCookie"
+	clear_stale_singleton
+	[[ ! -L $CWS_CLAUDE_CONFIG/SingletonSocket ]]
+	[[ ! -L $CWS_CLAUDE_CONFIG/SingletonLock ]]
+	[[ ! -L $CWS_CLAUDE_CONFIG/SingletonCookie ]]
+}
+
+@test "clear_stale_singleton: leaves a live singleton (socket target exists)" {
+	mkdir -p "$TEST_TMP/live"
+	: > "$TEST_TMP/live/SingletonSocket"        # target present = live owner
+	ln -s "$TEST_TMP/live/SingletonSocket" "$CWS_CLAUDE_CONFIG/SingletonSocket"
+	ln -s 'cws-1' "$CWS_CLAUDE_CONFIG/SingletonLock"
+	clear_stale_singleton
+	[[ -L $CWS_CLAUDE_CONFIG/SingletonSocket ]]
+	[[ -L $CWS_CLAUDE_CONFIG/SingletonLock ]]
+}
+
+@test "clear_stale_singleton: no-op when no singleton files exist" {
+	run clear_stale_singleton
+	[[ $status -eq 0 ]]
+}

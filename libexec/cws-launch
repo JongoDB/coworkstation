@@ -19,7 +19,10 @@
 #===============================================================================
 
 backup_root="${CWS_BACKUP_ROOT:-$HOME/.cache/coworkstation/config-backups}"
-claude_config="${CWS_CLAUDE_CONFIG:-$HOME/.config/Claude}"
+# Extra per-device sessions redirect XDG_CONFIG_HOME (see lib/session.sh),
+# so the guardian must act on the session's own config home, not always
+# the primary's ~/.config/Claude.
+claude_config="${CWS_CLAUDE_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/Claude}"
 keep=5
 
 # Rotate one file into $backup_root, copy-if-changed, keep $keep.
@@ -63,6 +66,26 @@ guard_configs() {
 		-o -name 'scheduled-tasks.json' \) 2> /dev/null)
 }
 
+# Clear a stale Chromium/Electron singleton left by an unclean shutdown.
+# Electron records the running instance in SingletonLock (a "host-pid"
+# symlink) and listens on SingletonSocket (a unix socket under /tmp). A
+# crash leaves all three behind; after a reboot /tmp is wiped AND the
+# recorded pid is often reused by an unrelated process (e.g. the primary
+# session's Claude), so Electron believes the profile is already owned,
+# tries to hand off to the vanished socket, and hangs with a blank
+# window. A dangling socket target proves no live instance owns the
+# profile — a real owner's socket exists — so it is safe to clear the
+# trio and let this launch acquire the lock cleanly.
+clear_stale_singleton() {
+	local sock="$claude_config/SingletonSocket"
+	# -L: the symlink is present; ! -e: its target is gone (dangling).
+	if [[ -L $sock && ! -e $sock ]]; then
+		rm -f "$claude_config/SingletonLock" \
+			"$claude_config/SingletonSocket" \
+			"$claude_config/SingletonCookie"
+	fi
+}
+
 # Resolve the real launcher: official name first, community second.
 find_launcher() {
 	if command -v claude-desktop > /dev/null 2>&1; then
@@ -76,6 +99,7 @@ find_launcher() {
 
 main() {
 	guard_configs
+	clear_stale_singleton
 	local launcher
 	if ! launcher=$(find_launcher); then
 		printf '[cws-launch] ERROR: no Claude Desktop launcher found\n' >&2
