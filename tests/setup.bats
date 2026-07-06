@@ -88,3 +88,14 @@ teardown() {
 	grep -qx 'ru cws 8443 kasmvnc' "$TEST_TMP/calls"
 	grep -qx 'ru bob 8444 kasmvnc' "$TEST_TMP/calls"
 }
+
+@test "run_reconfigure: forces overwrite so stale config is replaced" {
+	mkdir -p "$APPLIANCE_ETC"
+	printf 'profile=kasmvnc\n' > "$APPLIANCE_ETC/appliance.conf"
+	require_root() { return 0; }
+	# write_file keeps existing files unless appliance_force=1; capture it.
+	install_polkit_rules() { echo "force=${appliance_force:-0}" >> "$TEST_TMP/calls"; }
+	reconfigure_user() { :; }
+	run_reconfigure cws
+	grep -qx 'force=1' "$TEST_TMP/calls"
+}
