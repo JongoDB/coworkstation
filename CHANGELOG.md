@@ -26,7 +26,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (self-service), and sign-in then persists encrypted at rest. Extra
   `cws-sessions/<N>` device sessions are unchanged (`--password-store=
   basic`; they are the same person on a second device, so there is no
-  principal to isolate). Design + threat model:
+  principal to isolate). If the member does not set up the keyring
+  (cancels the prompt, it times out, or `secret-tool` is absent), the
+  launch falls back to the plaintext store so Claude never blocks on a
+  keyring prompt it cannot complete — the pre-keyring behaviour, minus
+  the hang. Design + threat model:
   `docs/plans/2026-07-06-session-keyring-design.md`.
 
 ### Fixed
