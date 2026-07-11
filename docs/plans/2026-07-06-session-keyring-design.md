@@ -176,6 +176,51 @@ Unit-test the scoping/invocation (mock `secret-tool` /
 persist-across-restart is inherently the member's self-service step,
 completed on their next real login.
 
+## Reality check (2026-07-11): Electron does not use the keyring here
+
+Live end-to-end testing on the box (Claude Desktop **1.18286.0**, XFCE
+over kasmVNC) found the feature's core premise does **not** hold on this
+build: Electron `safeStorage.isEncryptionAvailable()` is **never** true,
+so the login keyring is never actually used.
+
+Everything the design assumed is verified-correct, and it still fails:
+
+- The login keyring exists, is the **default** collection
+  (`ReadAlias("default")` → `Default_Keyring`), and is **unlocked**
+  (`Locked=false`) — checked over D-Bus.
+- `libsecret-1.so.0` is installed and loadable; `secret-tool`
+  reads/writes the keyring fine.
+- Forcing `--password-store=gnome-libsecret` still logs
+  `isEncryptionAvailable=false … backend=basic_text`.
+- Across every launch since the keyring was created,
+  `isEncryptionAvailable=true` has occurred **0 times**, and no
+  Electron/Chrome key is ever written to the keyring.
+
+So Claude's Electron falls back to the plaintext `basic_text` store
+regardless of keyring state. Consequences on this build:
+
+1. **Sign-in does not persist encrypted** — the feature's headline goal
+   is inert; it behaves like the pre-keyring plaintext fallback.
+2. **Cowork's device bridge is blocked.** The device registry needs the
+   encrypted enclave key from `safeStorage`; with encryption
+   unavailable it logs `enclave key unavailable — refusing to resolve
+   row-PK`, and **no device tools** (`device_bash`, `device_stage_files`,
+   or the `client-screen` screenshot tools) reach the model. That is
+   why the Bridge screen-share round-trip cannot complete
+   (see `docs/browser-validation.md` check 6).
+
+This is a **Claude Desktop / Electron limitation**, not a Coworkstation
+defect — every OS-side prerequisite is correct. The only part of the
+keyring work that has present-day value is the graceful fallback in
+`cws-launch` (no hang when the keyring is not usable). The rest is
+correct and ready for a Claude Desktop build whose `safeStorage` uses
+the OS keyring.
+
+**Open decision:** keep the keyring machinery (create/unlock prompt) in
+case a future Desktop build or a GNOME/KDE deployment uses it, or
+simplify to always `--password-store=basic` (drop the prompt) since it
+yields nothing on the current build. Deferred to the maintainer.
+
 ## Out of scope
 
 - Empty-password / plaintext keyrings (rejected: not production-grade).
