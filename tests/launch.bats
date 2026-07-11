@@ -79,64 +79,18 @@ _stub_launcher() {
 	chmod +x "$TEST_TMP/fake-launcher"
 }
 
-# secret-tool stub with a chosen exit code (0 = keyring set up).
-_stub_secret_tool() {
-	local dir="$TEST_TMP/bin"
-	mkdir -p "$dir"
-	printf '#!/bin/sh\nexit %s\n' "$1" > "$dir/secret-tool"
-	chmod +x "$dir/secret-tool"
-	printf '%s' "$dir"
-}
-
-@test "main: guards, then execs a primary session with a set-up keyring on the default store" {
+@test "main: guards, then execs with the plaintext store and passes args" {
 	printf '{}' > "$CWS_CLAUDE_CONFIG/claude_desktop_config.json"
 	_stub_launcher
-	local bin; bin=$(_stub_secret_tool 0)         # keyring available
-	PATH="$bin:$PATH" run main --some-flag
+	run main --some-flag
 	[[ $status -eq 0 ]]
-	[[ $output == *'LAUNCHED --some-flag'* ]]
-	[[ -d $CWS_BACKUP_ROOT/claude_desktop_config.json ]]
-	# a working keyring means the default (persisting) store, no flag
-	[[ $output != *'--password-store=basic'* ]]
-}
-
-@test "main: primary session without a set-up keyring falls back to the plaintext store" {
-	_stub_launcher
-	local bin; bin=$(_stub_secret_tool 1)         # prompt cancelled/timed out
-	PATH="$bin:$PATH" run main --some-flag
-	[[ $status -eq 0 ]]
-	# fall back so Claude never blocks on a keyring prompt it can't complete
+	# Electron ignores the OS keyring on this build, so every session uses
+	# the plaintext store — no keyring prompt, no secret-service hang.
 	[[ $output == *'LAUNCHED --password-store=basic --some-flag'* ]]
+	[[ -d $CWS_BACKUP_ROOT/claude_desktop_config.json ]]
 }
 
-@test "prepare_keyring: exports the display env and succeeds when the prompt does" {
-	local dir="$TEST_TMP/bin"
-	mkdir -p "$dir"
-	printf '#!/bin/sh\necho "store $*" >> "%s/calls"\nexit 0\n' "$TEST_TMP" \
-		> "$dir/secret-tool"
-	printf '#!/bin/sh\necho "env $*" >> "%s/calls"\n' "$TEST_TMP" \
-		> "$dir/dbus-update-activation-environment"
-	chmod +x "$dir/secret-tool" "$dir/dbus-update-activation-environment"
-	PATH="$dir:$PATH" run prepare_keyring
-	[[ $status -eq 0 ]]
-	grep -q 'env DISPLAY XAUTHORITY' "$TEST_TMP/calls"
-	grep -q 'store .*org.coworkstation.Login' "$TEST_TMP/calls"
-}
-
-@test "prepare_keyring: non-zero when the prompt is cancelled or times out" {
-	local bin; bin=$(_stub_secret_tool 1)
-	PATH="$bin:$PATH" run prepare_keyring
-	[[ $status -ne 0 ]]
-}
-
-@test "prepare_keyring: non-zero when secret-tool is absent" {
-	mkdir -p "$TEST_TMP/empty"
-	PATH="$TEST_TMP/empty" run prepare_keyring
-	[[ $status -ne 0 ]]
-}
-
-@test "main: extra session forces the plaintext password store" {
-	# An extra session's config home lives under cws-sessions/<N>.
+@test "main: extra session also uses the plaintext store" {
 	export CWS_CLAUDE_CONFIG="$TEST_TMP/cws-sessions/50/Claude"
 	claude_config="$CWS_CLAUDE_CONFIG"
 	mkdir -p "$CWS_CLAUDE_CONFIG"

@@ -26,23 +26,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   re-provision to land on a running box. `cws update` now points at it.
   Idempotent; effective on the next session start.
 
-- **Persistent, passphrase-protected sign-in.** Claude's "sign-in won't
-  be saved" came from having no usable secret store: a VNC/RDP desktop
-  is not a PAM login, so gnome-keyring never created a login keyring,
-  and XFCE never put `DISPLAY`/`XAUTHORITY` in the D-Bus activation
-  environment, so its `gcr` unlock prompt could not render. `cws-launch`
-  now (for primary/member sessions) exports that environment and asks
-  gnome-keyring to create-or-unlock the login keyring before Claude
-  starts; the member sets and enters their own passphrase in-session
-  (self-service), and sign-in then persists encrypted at rest. Extra
-  `cws-sessions/<N>` device sessions are unchanged (`--password-store=
-  basic`; they are the same person on a second device, so there is no
-  principal to isolate). If the member does not set up the keyring
-  (cancels the prompt, it times out, or `secret-tool` is absent), the
-  launch falls back to the plaintext store so Claude never blocks on a
-  keyring prompt it cannot complete — the pre-keyring behaviour, minus
-  the hang. Design + threat model:
-  `docs/plans/2026-07-06-session-keyring-design.md`.
+- **`cws-launch` always uses the plaintext secret store**
+  (`--password-store=basic`) for every session. A passphrase-protected
+  login keyring was designed and built for encrypted, persistent
+  sign-in, but live testing showed the current Claude Desktop build's
+  Electron `safeStorage` never uses the OS keyring
+  (`isEncryptionAvailable` stays false even with a correct, unlocked
+  default keyring), so the keyring bought nothing and its session-start
+  prompt was pure friction. The plaintext store also means no
+  secret-service probe, so no session can hang on the keyring. The full
+  keyring design is preserved in
+  `docs/plans/2026-07-06-session-keyring-design.md` for a Desktop build
+  that uses libsecret; the blocker is tracked at
+  JongoDB/coworkstation#12.
 
 ### Fixed
 

@@ -216,10 +216,14 @@ keyring work that has present-day value is the graceful fallback in
 correct and ready for a Claude Desktop build whose `safeStorage` uses
 the OS keyring.
 
-**Open decision:** keep the keyring machinery (create/unlock prompt) in
-case a future Desktop build or a GNOME/KDE deployment uses it, or
-simplify to always `--password-store=basic` (drop the prompt) since it
-yields nothing on the current build. Deferred to the maintainer.
+**Decision (2026-07-11): simplified.** Since the keyring yields nothing
+on the current build and its prompt was pure friction, `cws-launch` now
+always passes `--password-store=basic` (no `prepare_keyring`, no prompt,
+and — as a bonus — no secret-service probe on any session, so no keyring
+hang is possible anywhere). The full keyring path (`prepare_keyring`,
+`libsecret-tools`, the activation-env export) lives in git history and
+this design; restore it if a Claude Desktop build's `safeStorage` starts
+using libsecret. Tracked upstream at JongoDB/coworkstation#12.
 
 ## Out of scope
 

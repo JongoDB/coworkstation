@@ -106,52 +106,6 @@ find_launcher() {
 # sign-in — the keyring is unavailable there — so this only removes the
 # hang. The primary session is left on the default: its shared user bus
 # has a responsive keyring.
-# Create-or-unlock the login keyring so Electron safeStorage works and
-# Claude's sign-in persists ENCRYPTED at rest, before Claude checks (it
-# gates on isEncryptionAvailable up front). One login keyring is shared
-# across all of a user's sessions on the shared user bus.
-#
-# XFCE does not export the display into the D-Bus activation environment,
-# so an activated gcr-prompter cannot render; export it, then a marker
-# store triggers gnome-keyring's own create/unlock dialog in the session.
-# The member owns the passphrase (self-service). The store blocks on the
-# dialog, which is the point (unlock before Claude), but a member who
-# walks away must not wedge the launch — so it is bounded by a timeout.
-#
-# Returns 0 only if the keyring is now available (created/unlocked);
-# non-zero on cancel, timeout, or a missing secret-tool. The caller uses
-# that to fall back to the plaintext store, so Claude never blocks on a
-# keyring prompt it cannot complete.
-prepare_keyring() {
-	command -v secret-tool > /dev/null 2>&1 || return 1
-	: "${XAUTHORITY:=$HOME/.Xauthority}"
-	export DISPLAY XAUTHORITY
-	if command -v dbus-update-activation-environment > /dev/null 2>&1; then
-		dbus-update-activation-environment DISPLAY XAUTHORITY \
-			2> /dev/null || true
-	fi
-	local store='secret-tool'
-	command -v timeout > /dev/null 2>&1 && store='timeout 120 secret-tool'
-	# shellcheck disable=SC2086  # $store is a deliberate command prefix
-	printf '' | $store store --label='Login' \
-		xdg:schema org.coworkstation.Login app claude \
-		> /dev/null 2>&1
-}
-
-# Which secret store Claude should use. Extra cws-sessions/N desktops run
-# on a private bus with no keyring daemon, and a primary/member session
-# whose keyring the member did not set up would otherwise make Claude
-# block on a keyring prompt at startup — both take the plaintext 'basic'
-# store (no secret-service call, no hang). A primary/member session with
-# a set-up keyring uses the default (gnome_libsecret), which persists.
-resolve_store_flag() {
-	if [[ $claude_config == */cws-sessions/* ]]; then
-		printf '%s' '--password-store=basic'
-	elif ! prepare_keyring; then
-		printf '%s' '--password-store=basic'
-	fi
-}
-
 main() {
 	guard_configs
 	clear_stale_singleton
@@ -160,10 +114,17 @@ main() {
 		printf '[cws-launch] ERROR: no Claude Desktop launcher found\n' >&2
 		return 127
 	fi
-	local flags
-	flags=$(resolve_store_flag)
-	# shellcheck disable=SC2086  # $flags is a deliberate single flag or empty
-	exec "$launcher" $flags "$@"
+	# Always use the plaintext 'basic' store. Electron's safeStorage does
+	# NOT use the OS keyring on the current Claude Desktop build (verified:
+	# isEncryptionAvailable never true even with a correct, unlocked
+	# default keyring — see docs/plans/2026-07-06-session-keyring-design.md
+	# and JongoDB/coworkstation#12), so the keyring bought nothing and its
+	# create/unlock prompt was pure friction. --password-store=basic also
+	# means no secret-service probe, so no session (primary, member, or
+	# extra :50+) can hang on the keyring. Restore the keyring path (git
+	# history has prepare_keyring) if a Desktop build's safeStorage starts
+	# using libsecret.
+	exec "$launcher" --password-store=basic "$@"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
