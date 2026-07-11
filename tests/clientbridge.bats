@@ -137,3 +137,35 @@ teardown() {
 	[[ $status -eq 0 ]]
 	[[ $output == *'all assertions passed'* ]]
 }
+
+@test "clientbridge_screenshot: copies a fresh frame to DEST" {
+	export CWS_BRIDGE_RUNTIME_DIR="$TEST_TMP/rt"
+	mkdir -p "$CWS_BRIDGE_RUNTIME_DIR"
+	printf 'JPEGBYTES' > "$CWS_BRIDGE_RUNTIME_DIR/latest.jpg"
+	printf '{"ts":%s,"bytes":9}' "$(( $(date +%s) * 1000 ))" \
+		> "$CWS_BRIDGE_RUNTIME_DIR/latest.meta"
+	run clientbridge_screenshot "$TEST_TMP/out.jpg"
+	[[ $status -eq 0 ]]
+	[[ $output == *"$TEST_TMP/out.jpg"* ]]
+	[[ "$(cat "$TEST_TMP/out.jpg")" == 'JPEGBYTES' ]]
+}
+
+@test "clientbridge_screenshot: refuses when no frame is shared" {
+	export CWS_BRIDGE_RUNTIME_DIR="$TEST_TMP/rt"
+	mkdir -p "$CWS_BRIDGE_RUNTIME_DIR"
+	run clientbridge_screenshot "$TEST_TMP/out.jpg"
+	[[ $status -ne 0 ]]
+	[[ $output == *'no client screen is being shared'* ]]
+	[[ ! -f $TEST_TMP/out.jpg ]]
+}
+
+@test "clientbridge_screenshot: refuses a stale frame" {
+	export CWS_BRIDGE_RUNTIME_DIR="$TEST_TMP/rt"
+	mkdir -p "$CWS_BRIDGE_RUNTIME_DIR"
+	printf 'JPEGBYTES' > "$CWS_BRIDGE_RUNTIME_DIR/latest.jpg"
+	printf '{"ts":1000,"bytes":9}' > "$CWS_BRIDGE_RUNTIME_DIR/latest.meta"
+	run clientbridge_screenshot "$TEST_TMP/out.jpg"
+	[[ $status -ne 0 ]]
+	[[ $output == *'looks stopped'* ]]
+	[[ ! -f $TEST_TMP/out.jpg ]]
+}

@@ -90,6 +90,7 @@ cmd_client() {
 					"$cws_etc/appliance.conf" | cut -d= -f2)
 			fi
 			clientbridge_link "$user" "${1:-$bhost}" ;;
+		screenshot) clientbridge_screenshot "${1:-}" ;;
 		help|*)
 			printf 'cws client setup [--user U] [DISPLAY]\n'
 			printf 'cws client id [USER]        box device ID\n'
@@ -97,6 +98,7 @@ cmd_client() {
 			printf 'cws client status [USER]\n'
 			printf 'cws client bridge-link [HOST]  tokened /bridge URL\n'
 			printf 'cws client bridge-setup [--user U] [DISPLAY] [HOST]\n'
+			printf 'cws client screenshot [DEST]  save the shared frame\n'
 			printf 'laptop live-mount (run on the laptop):\n'
 			printf '  curl -fsSLO https://raw.githubusercontent.com/jongodb/coworkstation/main/client/cws-client\n'
 			;;

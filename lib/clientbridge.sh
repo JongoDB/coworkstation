@@ -174,3 +174,37 @@ clientbridge_link() {
 	fi
 	printf 'https://%s/bridge/?t=%s\n' "$hostname" "$(cat "$token_file")"
 }
+
+# cws client screenshot [DEST] — copy the latest shared frame to DEST so
+# Cowork's built-in device tools (device_bash + device_stage_files) can
+# stage and view it. Claude Desktop 1.18286.0 does not surface local MCP
+# server tools to the Cowork model, so the client_screenshot MCP tool is
+# unreachable there; this rides the device-tools path instead. Refuses a
+# missing or stale (>20s) frame, matching the client-screen MCP server.
+clientbridge_screenshot() {
+	local dest="${1:-client-screen.jpg}"
+	local runtime
+	runtime="${CWS_BRIDGE_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/cws-bridge}"
+	local jpg="$runtime/latest.jpg"
+	local meta="$runtime/latest.meta"
+	if [[ ! -f $meta || ! -f $jpg ]]; then
+		log_err 'no client screen is being shared — open the bridge' \
+			'page and press "Start screen share"'
+		return 1
+	fi
+	local ts
+	ts=$(jq -r '.ts // empty' "$meta" 2> /dev/null)
+	if [[ -z $ts ]]; then
+		log_err 'client screen frame metadata is unreadable'
+		return 1
+	fi
+	# meta.ts is epoch ms; compare in whole seconds for a portable date.
+	local age=$(( $(date +%s) - ts / 1000 ))
+	if (( age > 20 )); then
+		log_err "client screen share looks stopped (last frame ${age}s" \
+			'ago) — restart it and try again'
+		return 1
+	fi
+	cp "$jpg" "$dest" || return 1
+	printf '%s\n' "$dest"
+}

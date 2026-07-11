@@ -353,7 +353,9 @@ this tab.</p>
 screen. Close the tab or press Stop to end it.</div>
 <h2>Screen share</h2>
 <p>Claude sees ~1 frame/second of whatever you pick (screen, window,
-or tab). Ask it to use the <code>client_screenshot</code> tool.</p>
+or tab). In a Cowork task, ask it to run
+<code>cws client screenshot ~/screen.jpg</code> on your device, then
+stage and view <code>~/screen.jpg</code>.</p>
 <button id="startScreen">Start screen share</button>
 <button id="stopScreen">Stop</button>
 <h2>Folder share (desktop Chrome/Edge)</h2>
