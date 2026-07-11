@@ -53,9 +53,20 @@ left the Cloudflare Access apps in place.
    full isolation from the others.
 6. **Bridge PWA** — `sudo cws client bridge-link` prints a tokened
    URL; open it on a tablet. Add-to-Home-Screen; test clipboard
-   send/fetch and screen share (then ask Claude in the session to run
-   the `client_screenshot` tool and confirm it sees the shared
-   screen).
+   send/fetch and screen share. For screen share, in a Cowork task ask
+   Claude to run `cws client screenshot ~/screen.jpg` on your device,
+   then stage and view `~/screen.jpg`, and confirm it sees the shared
+   screen.
+
+   > **Note (Claude Desktop 1.18286.0):** the `client-screen` MCP
+   > server loads and its `client_screenshot` tool is announced to the
+   > Cowork "DO bridge" (`mcp.log`: *Connected to client-screen (2
+   > tools)*), but local `mcpServers` tools are **not surfaced to the
+   > Cowork model** — only the built-in device tools (`device_bash`,
+   > `device_stage_files`, …) reach it. So the tool cannot be called
+   > directly; `cws client screenshot` rides the working device-tools
+   > path instead. If a future Desktop build surfaces local MCP tools,
+   > `client_screenshot` becomes callable again.
 7. **ClientSync** — install Syncthing on the client, add the box's
    device ID (`sudo cws client id`), run `sudo cws client add-device
    <CLIENT-ID>`, accept both ends, and confirm a file syncs into

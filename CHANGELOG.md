@@ -7,6 +7,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`cws client screenshot [DEST]`** copies the latest shared bridge
+  frame to a file (refusing a missing or >20s-stale frame). Claude
+  Desktop 1.18286.0 does not surface local `mcpServers` tools to the
+  Cowork model — the `client-screen` MCP server loads and its
+  `client_screenshot` tool is announced to the Cowork DO bridge, but
+  only the built-in device tools (`device_bash`, `device_stage_files`,
+  …) reach the model, so the MCP tool is unreachable there. This rides
+  the working device-tools path: in a Cowork task, Claude runs
+  `cws client screenshot ~/screen.jpg`, stages, and views it. The
+  Bridge PWA and `docs/browser-validation.md` now describe this flow.
+
 - **`cws reconfigure`** re-applies the idempotent config a fresh `setup`
   writes but a code-only `cws update` cannot reach — system polkit
   rules and each user's generated session config (`xstartup`/yaml) +
