@@ -58,15 +58,28 @@ left the Cloudflare Access apps in place.
    then stage and view `~/screen.jpg`, and confirm it sees the shared
    screen.
 
-   > **Note (Claude Desktop 1.18286.0):** the `client-screen` MCP
-   > server loads and its `client_screenshot` tool is announced to the
-   > Cowork "DO bridge" (`mcp.log`: *Connected to client-screen (2
-   > tools)*), but local `mcpServers` tools are **not surfaced to the
-   > Cowork model** — only the built-in device tools (`device_bash`,
-   > `device_stage_files`, …) reach it. So the tool cannot be called
-   > directly; `cws client screenshot` rides the working device-tools
-   > path instead. If a future Desktop build surfaces local MCP tools,
-   > `client_screenshot` becomes callable again.
+   > **Known blocker (Claude Desktop 1.18286.0) — root cause.** The
+   > screen-share round-trip cannot complete on this build, and the
+   > cause is a chain, not the bridge:
+   >
+   > 1. Electron `safeStorage.isEncryptionAvailable()` is **never** true
+   >    here (see `docs/plans/2026-07-06-session-keyring-design.md`) —
+   >    it falls back to `basic_text` despite a correct, unlocked
+   >    default keyring.
+   > 2. Cowork's device registry needs the **encrypted enclave key**
+   >    from `safeStorage`; without it, `mcp.log` shows
+   >    `enclave key unavailable — refusing to resolve row-PK`.
+   > 3. So the device "DO bridge" never resolves, and **no device tools
+   >    reach the model** — not `device_bash`/`device_stage_files`, and
+   >    not the `client-screen` screenshot tools (which are namespaced
+   >    `client-screen__client_screenshot` and announced to the DO
+   >    bridge, but never surfaced).
+   >
+   > `cws client screenshot` is verified to copy the latest frame on the
+   > box and is the intended path once the device bridge works; it just
+   > can't be exercised from a Cowork task until Claude Desktop's
+   > `safeStorage` uses the OS keyring. Clipboard + folder-share +
+   > PWA load all work today.
 7. **ClientSync** — install Syncthing on the client, add the box's
    device ID (`sudo cws client id`), run `sudo cws client add-device
    <CLIENT-ID>`, accept both ends, and confirm a file syncs into
