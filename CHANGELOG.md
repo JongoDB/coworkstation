@@ -21,6 +21,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   immersive experience — see
   `docs/plans/2026-07-12-immersive-claude-kiosk-design.md`.
 
+- **Optional HiDPI scaling in `cws-launch`** (`CWS_DEVICE_SCALE` or a
+  `device-scale` file in the session config home) passes
+  `--force-device-scale-factor` to Claude for crisp rendering on retina
+  phones/tablets. Default unset = today's behavior. kasmVNC remote-resize
+  already sizes the X framebuffer to the client's CSS viewport (verified
+  live: framebuffer == browser `innerWidth×innerHeight`), so Claude's
+  mobile-responsive layout appears at a phone-width viewport with no
+  other change; this knob only sharpens it. Opt-in because the flag is
+  fixed at launch while clients of different DPR can share a session.
+
 - **`cws client screenshot [DEST]`** copies the latest shared bridge
   frame to a file (refusing a missing or >20s-stale frame). Claude
   Desktop 1.18286.0 does not surface local `mcpServers` tools to the

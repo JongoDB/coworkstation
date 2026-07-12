@@ -90,6 +90,41 @@ _stub_launcher() {
 	[[ -d $CWS_BACKUP_ROOT/claude_desktop_config.json ]]
 }
 
+@test "device_scale_flag: unset -> no flag (today's behavior)" {
+	unset CWS_DEVICE_SCALE
+	[[ -z $(device_scale_flag) ]]
+}
+
+@test "device_scale_flag: env value emits the Electron flag" {
+	CWS_DEVICE_SCALE=2 run device_scale_flag
+	[[ $output == '--force-device-scale-factor=2' ]]
+	CWS_DEVICE_SCALE=1.5 run device_scale_flag
+	[[ $output == '--force-device-scale-factor=1.5' ]]
+}
+
+@test "device_scale_flag: reads the per-session scale file" {
+	unset CWS_DEVICE_SCALE
+	printf '3\n' > "$CWS_CLAUDE_CONFIG/device-scale"
+	run device_scale_flag
+	[[ $output == '--force-device-scale-factor=3' ]]
+}
+
+@test "device_scale_flag: rejects junk and zero" {
+	unset CWS_DEVICE_SCALE
+	CWS_DEVICE_SCALE='; rm -rf /' run device_scale_flag
+	[[ -z $output ]]
+	CWS_DEVICE_SCALE=0 run device_scale_flag
+	[[ -z $output ]]
+}
+
+@test "main: passes the device-scale flag when set, before user args" {
+	printf '{}' > "$CWS_CLAUDE_CONFIG/claude_desktop_config.json"
+	_stub_launcher
+	CWS_DEVICE_SCALE=2 run main --some-flag
+	[[ $status -eq 0 ]]
+	[[ $output == *'--password-store=basic --force-device-scale-factor=2 --some-flag'* ]]
+}
+
 @test "main: extra session also uses the plaintext store" {
 	export CWS_CLAUDE_CONFIG="$TEST_TMP/cws-sessions/50/Claude"
 	claude_config="$CWS_CLAUDE_CONFIG"

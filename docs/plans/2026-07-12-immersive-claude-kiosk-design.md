@@ -97,6 +97,30 @@ viewport stays phone-sized (~390 wide → mobile layout) while rendering
 at high DPI. The login page/PWA reads `window.devicePixelRatio` and
 forwards it.
 
+**Measured on box (2026-07-12).** Read-only telemetry from a live,
+authenticated kasm session confirmed the mechanism: the server X
+framebuffer (`1920×932`) **exactly equals** the browser's CSS viewport
+(`innerWidth×innerHeight`) at DPR 1. So:
+
+- **Remote resize already tracks the client viewport by default** — a
+  phone reporting a 390-wide viewport gets a 390-wide X screen → Claude
+  renders its mobile layout. **No resolution code is needed for the core
+  phone-optimized layout.**
+- kasm sizes the framebuffer in **CSS px, ignoring DPR**, so on a retina
+  phone the 390-px framebuffer upscales soft. True crispness needs the
+  framebuffer at device px *and* `--force-device-scale-factor=DPR`.
+
+**Decision — DPR crispness is an opt-in knob, not core.** The
+scale-factor is fixed at Claude launch, but a persistent session can be
+reached by clients of different DPR (phone DPR 3, laptop DPR 1), so no
+single value is universally right. Rather than relaunch Claude per
+connection, `cws-launch` gained an **optional** `--force-device-scale-factor`
+driven by `CWS_DEVICE_SCALE` or a `device-scale` file in the session's
+config home (default unset = today's working behavior). The login shim
+(§3) can record `window.devicePixelRatio` there for a phone/tablet-first
+session. Making the framebuffer itself device-px (a client-side kasm
+tweak) is deferred until measured on a real phone.
+
 ### 3. Branded login page + PWA
 
 **Verified on box (spike #3, 2026-07-12):** the kasm gate is **raw HTTP
