@@ -321,20 +321,20 @@ xsetroot -solid '#1c1c1c' 2> /dev/null || true
 # Minimal kiosk WM: force-fullscreen the top window, no titlebar/taskbar.
 matchbox-window-manager -use_titlebar no &
 
-# Is a Claude window currently on screen? kasmVNC/xdotool report the
-# window as viewable only while it is actually shown — when Claude hides
-# to tray (its close/minimize) every Claude window drops out of
-# --onlyvisible, even the tiny helper — so a non-empty result means Claude
-# is up. (Kept deliberately simple: an earlier getwindowgeometry filter
-# failed silently under dash, leaving the supervisor blind.)
+# Is a Claude window currently on screen? Match by the launched process's
+# own windows (_NET_WM_PID), not WM_CLASS — Claude's main content window
+# does not carry the app class reliably, but every window it owns reports
+# its pid. When Claude hides to tray (its close/minimize) all its windows
+# drop out of --onlyvisible, so an empty result means the screen is blank.
 claude_up() {
-	[ -n "$(xdotool search --onlyvisible --class '[Cc]laude-desktop' \
-		2> /dev/null)" ]
+	[ -n "$(xdotool search --pid "$cpid" --onlyvisible 2> /dev/null)" ]
 }
-# Is the OAuth browser on screen? (Claude opens it for "Continue with
-# Google"; don't recycle Claude out from under a sign-in.)
+# Is Claude's OAuth browser running? It opens Chrome for "Continue with
+# Google"; matchbox may unmap Claude beneath it, so don't recycle Claude
+# out from under a sign-in just because its window is momentarily hidden.
 browser_up() {
-	xdotool search --onlyvisible --class '[Cc]hrom' 2> /dev/null | grep -q .
+	pgrep -x chrome > /dev/null 2>&1 \
+		|| pgrep -f 'google-chrome ' > /dev/null 2>&1
 }
 
 # Supervisor: never strand the user on the bare backdrop. cws-launch execs

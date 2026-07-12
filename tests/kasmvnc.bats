@@ -240,7 +240,7 @@ _xstartup_stub_bin() {
 	out=$(kasmvnc_xstartup kiosk)
 	[[ $out == *'claude_up'* ]]            # detect a real Claude window
 	[[ $out == *'browser_up'* ]]           # leave the OAuth browser alone
-	[[ $out == *'xdotool search'* ]]       # window detection
+	[[ $out == *'--pid "$cpid"'* ]]        # detect by the process's window
 	[[ $out == *'kill "$cpid"'* ]]         # recycle the lingering instance
 }
 
