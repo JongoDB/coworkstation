@@ -333,6 +333,14 @@ function sendJson(res, code, obj) {
 	res.end(JSON.stringify(obj));
 }
 
+// Param validators — mirror libexec/cws-action-exec so bad input is
+// rejected before it is ever written to the spool. `allow` must start
+// alnum/'*' so it can't be smuggled as a flag.
+const reName = (s) => /^[a-z][a-z0-9_-]{0,30}$/.test(s || '');
+const reMem = (s) => /^[0-9]{1,5}[MG]$/.test(s || '');
+const reCpu = (s) => /^[0-9]{1,4}%$/.test(s || '');
+const reAllow = (s) => /^[A-Za-z0-9*][A-Za-z0-9._@,*+-]{0,253}$/.test(s || '');
+
 // Admin action: validate + password-recheck destructive ops, drop a
 // request in the spool for the root executor, then poll for its result.
 function handleAction(req, res) {
@@ -344,6 +352,14 @@ function handleAction(req, res) {
 		if (!spec) return sendJson(res, 400, { ok: false, output: 'unknown action' });
 		if (spec.destructive && !passwordOk(a.password)) {
 			return sendJson(res, 403, { ok: false, output: 'password required' });
+		}
+		// validate params up front (defense in depth with the executor)
+		if (/^(session|member)\./.test(a.action) && !reName(a.user)) {
+			return sendJson(res, 400, { ok: false, output: 'invalid user' });
+		}
+		if (a.action === 'member.add' && (!reMem(a.mem) || !reCpu(a.cpu)
+			|| (a.allow && !reAllow(a.allow)))) {
+			return sendJson(res, 400, { ok: false, output: 'invalid params' });
 		}
 		if (!ACTIONS_DIR) return sendJson(res, 500, { ok: false, output: 'actions off' });
 		const id = crypto.randomBytes(9).toString('hex');

@@ -135,6 +135,9 @@ teardown() {
 	printf '{"id":"a2","action":"session.restart","user":"BAD NAME"}' > "$spool/req-a2.json"
 	printf '{"id":"a3","action":"member.add","user":"carol","mem":"6G","cpu":"200%%"}' \
 		> "$spool/req-a3.json"
+	# argv flag-smuggling attempt via allow (leading dash)
+	printf '{"id":"a4","action":"member.add","user":"dave","mem":"6G","cpu":"200%%","allow":"--dry-run"}' \
+		> "$spool/req-a4.json"
 	run env CWS_ACTION_SPOOL="$spool" CWS_BIN="$bin/cws" APPLIANCE_ETC="$etc" \
 		"$SCRIPT_DIR/../libexec/cws-action-exec"
 	[[ $status -eq 0 ]]
@@ -146,6 +149,9 @@ teardown() {
 	grep -q 'invalid user' "$spool/result-a2.json"
 	# member.add with valid params -> mapped
 	grep -q 'member add carol 6G 200%' "$spool/result-a3.json"
+	# flag-smuggling allow -> rejected, cws never invoked with the flag
+	grep -q 'invalid params' "$spool/result-a4.json"
+	! grep -q 'dry-run' "$spool/result-a4.json"
 	# requests consumed
 	[[ ! -f $spool/req-a1.json ]]
 }

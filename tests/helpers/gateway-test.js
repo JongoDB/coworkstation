@@ -280,6 +280,9 @@ async function main() {
 	res = await action(ADMIN_PORT, { action: 'member.remove', user: 'bob',
 		password: PASSWORD });
 	if (res.status !== 200 || !JSON.parse(res.body).ok) die('destructive action with password should run');
+	res = await action(ADMIN_PORT, { action: 'member.add', user: 'dave',
+		mem: '6G', cpu: '200%', allow: '--dry-run' });
+	if (res.status !== 400) die('flag-smuggling allow must be rejected before spooling');
 	res = await action(GW_PORT, { action: 'session.restart', user: 'bob' });
 	if (res.status !== 404) die('member gateway must not expose /api/action');
 	clearInterval(execIv);

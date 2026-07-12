@@ -24,6 +24,11 @@ owner="${owner:-cowork}"
 valid_name() { [[ ${1:-} =~ ^[a-z][a-z0-9_-]{0,30}$ ]]; }
 valid_mem() { [[ ${1:-} =~ ^[0-9]{1,5}[MG]$ ]]; }
 valid_cpu() { [[ ${1:-} =~ ^[0-9]{1,4}%$ ]]; }
+# Access allow-list (emails/domains, comma-separated). MUST start with an
+# alnum or '*' so it can never be read as a flag (argv smuggling) —
+# member.sh has no `--` terminator, so a leading '-' would be parsed as an
+# option. cws re-validates the shape itself; this is the injection guard.
+valid_allow() { [[ ${1:-} =~ ^[A-Za-z0-9*][A-Za-z0-9._@,*+-]{0,253}$ ]]; }
 
 write_result() {
 	local id="$1" ok="$2" out="$3"
@@ -57,7 +62,8 @@ run() {
 		reclaim)
 			out=$("$CWS" reclaim 2>&1) && ok=true ;;
 		member.add)
-			if valid_name "$user" && valid_mem "$mem" && valid_cpu "$cpu"; then
+			if valid_name "$user" && valid_mem "$mem" && valid_cpu "$cpu" \
+				&& { [[ -z $allow ]] || valid_allow "$allow"; }; then
 				if [[ -n $allow ]]; then
 					out=$("$CWS" member add "$user" "$mem" "$cpu" "$allow" 2>&1) \
 						&& ok=true
