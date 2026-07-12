@@ -370,7 +370,9 @@ const PAGE = `<!DOCTYPE html>
 <p>Make this device a source for your Claude session on the box.
 Everything here is off until you turn it on, and stops when you close
 this tab.</p>
-<div id="sharing">🔴 SCREEN SHARING IS ON — Claude can see the shared
+<div id="sharing"><svg width="12" height="12" viewBox="0 0 12 12"
+ style="vertical-align:-1px;margin-right:6px"><circle cx="6" cy="6" r="5"
+ fill="#e5484d"/></svg>SCREEN SHARING IS ON — Claude can see the shared
 screen. Close the tab or press Stop to end it.</div>
 <div id="screenshare">
 <h2>Screen share</h2>

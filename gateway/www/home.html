@@ -34,7 +34,9 @@
     border-radius: 14px; padding: 16px 18px; transition: background .15s;
   }
   a.tile:active { background: #2f2f2f; }
-  a.tile .ico { font-size: 22px; width: 26px; text-align: center; }
+  a.tile .ico { width: 26px; display: flex; justify-content: center; }
+  a.tile .ico svg { width: 24px; height: 24px; fill: none; stroke: currentColor;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   a.tile .t { font-weight: 600; }
   a.tile .d { display: block; color: #9a9a9a; font-size: 12px; font-weight: 400; }
   a.primary { background: var(--brand); border-color: var(--brand); }
@@ -56,12 +58,12 @@
   <main>
     <div class="grid">
       <a class="tile primary" href="/?virtual_keyboard_visible=true">
-        <span class="ico">✳</span>
+        <span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg></span>
         <span><span class="t">Open Claude</span>
           <span class="d">Your full-screen workspace</span></span>
       </a>
       <a class="tile" href="/bridge/">
-        <span class="ico">🔗</span>
+        <span class="ico"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg></span>
         <span><span class="t">Bridge</span>
           <span class="d">Share files &amp; clipboard with this device</span></span>
       </a>
@@ -71,19 +73,9 @@
       <div class="section-label">Admin</div>
       <div class="grid">
         <a class="tile" href="/admin">
-          <span class="ico">📊</span>
-          <span><span class="t">Monitoring</span>
-            <span class="d">Sessions, usage &amp; activity</span></span>
-        </a>
-        <a class="tile" href="/admin#devices">
-          <span class="ico">📱</span>
-          <span><span class="t">Devices</span>
-            <span class="d">Devices seen per member</span></span>
-        </a>
-        <a class="tile" href="/admin#members">
-          <span class="ico">👥</span>
-          <span><span class="t">Members</span>
-            <span class="d">Roster &amp; management</span></span>
+          <span class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span>
+          <span><span class="t">Admin</span>
+            <span class="d">Monitoring, devices &amp; members</span></span>
         </a>
       </div>
     </div>
