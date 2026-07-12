@@ -198,11 +198,16 @@ async function main() {
 		die('authed request not proxied: ' + res.status + ' ' + res.body);
 	}
 
-	// 5b. authed bare root redirects with the kiosk keyboard default
+	// 5b. authed bare root lands on the homepage hub (not straight to Claude)
 	res = await req({ port: GW_PORT, path: '/', headers: { Cookie: cookie } });
-	if (res.status !== 302
-		|| !/virtual_keyboard_visible=true/.test(res.headers.location || '')) {
-		die('authed bare root should redirect with the keyboard param');
+	if (res.status !== 302 || res.headers.location !== '/home') {
+		die('authed bare root should redirect to /home, got ' + res.headers.location);
+	}
+	// but the kiosk entry (query present) proxies straight through
+	res = await req({ port: GW_PORT, path: '/?virtual_keyboard_visible=true',
+		headers: { Cookie: cookie } });
+	if (res.status !== 200 || !/UPSTREAM_OK/.test(res.body)) {
+		die('kiosk entry should proxy to kasm, got ' + res.status);
 	}
 
 	// 6. tampered cookie is rejected

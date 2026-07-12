@@ -257,12 +257,13 @@ const server = http.createServer((req, res) => {
 		return proxyBridge(req, res);
 	}
 
-	// The kiosk client lives at '/': pin the on-screen keyboard control
-	// (off by default; phones have no other way to summon the keyboard).
+	// Bare '/' is the landing -> the homepage hub. (Covers a typed domain
+	// and an installed PWA whose cached start_url is '/'.) The kiosk client
+	// lives at '/?virtual_keyboard_visible=true' — a query, so it does NOT
+	// match this and proxies straight through to kasm below. "Open Claude"
+	// links there.
 	if (url === '/') {
-		return res.writeHead(302, {
-			Location: '/?virtual_keyboard_visible=true',
-		}).end();
+		return res.writeHead(302, { Location: '/home' }).end();
 	}
 	proxyHttp(req, res);
 });
