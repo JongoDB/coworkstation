@@ -61,6 +61,18 @@ teardown() {
 	[[ $rule == *'polkit.addRule'* ]]
 }
 
+@test "enable_unattended_upgrades: also auto-tracks Anthropic (Claude)" {
+	pkg_install() { :; }
+	# capture each write_file target + body
+	write_file() { cat > "$TEST_TMP/$(basename "$1")"; }
+	enable_unattended_upgrades
+	# periodic upgrades on
+	grep -q 'Unattended-Upgrade "1"' "$TEST_TMP/20auto-upgrades"
+	# and the Anthropic origin allow-listed so Claude Desktop auto-updates
+	grep -q 'origin=Anthropic,codename=stable' \
+		"$TEST_TMP/52cws-claude-upgrades"
+}
+
 @test "install_polkit_rules: writes the rule to polkit's rules.d" {
 	# write_file runs in a pipeline subshell, so record via a file.
 	write_file() { printf '%s' "$1" > "$TEST_TMP/target"; cat > /dev/null; }

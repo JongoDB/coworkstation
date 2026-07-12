@@ -112,6 +112,16 @@ enable_unattended_upgrades() {
 		'APT::Periodic::Update-Package-Lists "1";' \
 		'APT::Periodic::Unattended-Upgrade "1";' \
 		| write_file /etc/apt/apt.conf.d/20auto-upgrades || return 1
+	# Auto-track Anthropic's Claude Desktop releases so the box stays
+	# current (its apt repo publishes Origin "Anthropic", suite "stable";
+	# the stock allow-list is security-only). The running app keeps its
+	# build until the next relaunch/reboot, when the kiosk supervisor
+	# picks up the newer binary.
+	printf '%s\n' \
+		'Unattended-Upgrade::Origins-Pattern {' \
+		'  "origin=Anthropic,codename=stable";' \
+		'};' \
+		| write_file /etc/apt/apt.conf.d/52cws-claude-upgrades || return 1
 }
 
 install_session_stack() {
