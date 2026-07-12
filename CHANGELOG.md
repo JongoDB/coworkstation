@@ -7,6 +7,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Kiosk mode — Claude-only appliance UI (`cws kiosk on|off|status`).**
+  Opt-in (`setup --kiosk`, `APPLIANCE_KIOSK=1`, or `cws kiosk on`); the
+  flag persists to `appliance.conf` so `reconfigure` and new members
+  reapply the same shape. When on, a session's `xstartup` boots straight
+  into a fullscreen Claude Desktop instead of XFCE: a minimal window
+  manager (`matchbox-window-manager`) force-fullscreens the window, and
+  a supervisor relaunches Claude if it exits (nothing else keeps the
+  session alive once XFCE is gone). Extra `:50+` device sessions keep
+  their private-bus isolation via a guarded self-re-exec under
+  `dbus-run-session`. The full-desktop path stays in code as the
+  rollback lever (`cws kiosk off`). First step of the phone/tablet-first
+  immersive experience — see
+  `docs/plans/2026-07-12-immersive-claude-kiosk-design.md`.
+
 - **`cws client screenshot [DEST]`** copies the latest shared bridge
   frame to a file (refusing a missing or >20s-stale frame). Claude
   Desktop 1.18286.0 does not surface local `mcpServers` tools to the

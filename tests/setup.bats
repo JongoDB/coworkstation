@@ -99,3 +99,28 @@ teardown() {
 	run_reconfigure cws
 	grep -qx 'force=1' "$TEST_TMP/calls"
 }
+
+@test "run_reconfigure: kiosk=1 in conf reapplies kiosk + installs the WM" {
+	mkdir -p "$APPLIANCE_ETC"
+	printf 'profile=kasmvnc\nkiosk=1\n' > "$APPLIANCE_ETC/appliance.conf"
+	require_root() { return 0; }
+	install_polkit_rules() { :; }
+	profile_kasmvnc_install_kiosk_deps() { echo kioskdeps >> "$TEST_TMP/calls"; }
+	# reconfigure_user must see kiosk mode propagated from the conf
+	reconfigure_user() { echo "kiosk=${appliance_kiosk}" >> "$TEST_TMP/calls"; }
+	run_reconfigure cws
+	grep -qx 'kioskdeps' "$TEST_TMP/calls"
+	grep -qx 'kiosk=1' "$TEST_TMP/calls"
+}
+
+@test "run_reconfigure: no kiosk flag stays desktop, no WM install" {
+	mkdir -p "$APPLIANCE_ETC"
+	printf 'profile=kasmvnc\n' > "$APPLIANCE_ETC/appliance.conf"
+	require_root() { return 0; }
+	install_polkit_rules() { :; }
+	profile_kasmvnc_install_kiosk_deps() { echo kioskdeps >> "$TEST_TMP/calls"; }
+	reconfigure_user() { echo "kiosk=${appliance_kiosk}" >> "$TEST_TMP/calls"; }
+	run_reconfigure cws
+	[[ ! -f $TEST_TMP/calls ]] || ! grep -qx 'kioskdeps' "$TEST_TMP/calls"
+	grep -qx 'kiosk=0' "$TEST_TMP/calls"
+}

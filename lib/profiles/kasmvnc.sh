@@ -50,6 +50,17 @@ kasmvnc_deb_url() {
 		"$codename" "$kasmvnc_version" "$arch"
 }
 
+# Kiosk mode replaces XFCE with a minimal WM. matchbox-window-manager is
+# the single-app kiosk WM (force-fullscreens the top window);
+# x11-xserver-utils provides xsetroot for the branded backdrop.
+profile_kasmvnc_install_kiosk_deps() {
+	if command -v matchbox-window-manager > /dev/null 2>&1; then
+		log_info 'kiosk WM (matchbox) already installed'
+		return 0
+	fi
+	pkg_install matchbox-window-manager x11-xserver-utils
+}
+
 profile_kasmvnc_install_packages() {
 	local url tmp_deb
 	url=$(kasmvnc_deb_url) || return 1
@@ -124,9 +135,23 @@ profile_kasmvnc_write_config() {
 	if [[ ${appliance_dry_run:-0} -ne 1 ]]; then
 		chown "$user:$user" "$home/.vnc/kasmvnc.yaml"
 	fi
-	kasmvnc_xstartup | write_file "$home/.vnc/xstartup" 755 || return 1
+	kasmvnc_xstartup "$(kasmvnc_mode)" \
+		| write_file "$home/.vnc/xstartup" 755 || return 1
 	if [[ ${appliance_dry_run:-0} -ne 1 ]]; then
 		chown "$user:$user" "$home/.vnc/xstartup"
+	fi
+}
+
+# Session UI mode baked into the generated xstartup: 'kiosk' (Claude-only
+# appliance — a minimal WM plus a supervised Claude, no XFCE) or
+# 'desktop' (the full XFCE session). Driven by appliance_kiosk, which
+# setup/reconfigure derive from appliance.conf's kiosk= flag; defaults to
+# desktop so an un-flagged box is unchanged.
+kasmvnc_mode() {
+	if [[ ${appliance_kiosk:-0} -eq 1 ]]; then
+		printf 'kiosk'
+	else
+		printf 'desktop'
 	fi
 }
 
@@ -144,7 +169,18 @@ network:
 EOF
 }
 
+# $1 = mode (kiosk|desktop); default desktop. The desktop path is the
+# original full-XFCE session, kept as the rollback lever; kiosk is the
+# Claude-only appliance UI.
 kasmvnc_xstartup() {
+	if [[ ${1:-desktop} == kiosk ]]; then
+		kasmvnc_xstartup_kiosk
+	else
+		kasmvnc_xstartup_desktop
+	fi
+}
+
+kasmvnc_xstartup_desktop() {
 	cat << 'EOF'
 #!/bin/sh
 # Extra sessions (displays :50 and up, see lib/session.sh) get their
@@ -176,6 +212,50 @@ if [ "$dnum" -ge 50 ] 2> /dev/null; then
 	exec dbus-run-session -- startxfce4
 fi
 exec startxfce4
+EOF
+}
+
+# Kiosk session: one fullscreen Claude Desktop, no XFCE. The container is
+# the appliance, not a workspace, so instead of a desktop we run a
+# minimal window manager that force-fullscreens Claude, plus a supervisor
+# that relaunches Claude if it exits — nothing else keeps the session
+# alive once XFCE is gone, so without the supervisor a crash would leave
+# a black screen.
+kasmvnc_xstartup_kiosk() {
+	cat << 'EOF'
+#!/bin/sh
+dnum=${DISPLAY#:}
+dnum=${dnum%%.*}
+# Extra per-device sessions (displays :50+, see lib/session.sh) get their
+# own config home — a second Claude beside the first, its own singleton
+# and sign-in — and their own private D-Bus bus, since the shared user
+# bus's secret-service proxy and singletons collide (the black-screen
+# case PR #1 fixed for the desktop path). Re-exec self once under a fresh
+# bus, guarded against recursion, so the kiosk tail below runs identically
+# on either the shared bus (primary) or a private bus (extra session).
+if [ "${dnum:-0}" -ge 50 ] 2> /dev/null; then
+	XDG_CONFIG_HOME="$HOME/.config/cws-sessions/$dnum"
+	export XDG_CONFIG_HOME
+	mkdir -p "$XDG_CONFIG_HOME"
+	if [ -z "$CWS_KIOSK_BUS" ]; then
+		CWS_KIOSK_BUS=1
+		export CWS_KIOSK_BUS
+		exec dbus-run-session -- "$0"
+	fi
+fi
+
+# Branded backdrop so any letterbox around Claude is brand color, not the
+# default desktop gray.
+xsetroot -solid '#1c1c1c' 2> /dev/null || true
+# Minimal kiosk WM: force-fullscreen the top window, no titlebar/taskbar.
+matchbox-window-manager -use_titlebar no &
+# Supervisor: keep Claude alive. cws-launch execs the guarded Claude (its
+# config backups + stale-singleton clearing intact); when Claude exits,
+# relaunch. The sleep paces a crash loop.
+while :; do
+	( cws-launch ) || true
+	sleep 2
+done
 EOF
 }
 
@@ -346,6 +426,9 @@ profile_kasmvnc_apply() {
 	local port="$appliance_kasm_base_port"
 
 	profile_kasmvnc_install_packages || return 1
+	if [[ ${appliance_kiosk:-0} -eq 1 ]]; then
+		profile_kasmvnc_install_kiosk_deps || return 1
+	fi
 	profile_kasmvnc_setup_cert "$user" || return 1
 	profile_kasmvnc_write_config "$user" "$port" || return 1
 	profile_kasmvnc_setup_auth "$user" || return 1

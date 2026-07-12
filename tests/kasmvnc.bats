@@ -204,3 +204,92 @@ _xstartup_stub_bin() {
 	# xfce must run under a fresh private bus, before startxfce4
 	[[ $output == *DBUS-RUN-SESSION*STARTXFCE4* ]]
 }
+
+# =============================================================================
+# Kiosk mode: Claude-only appliance UI (matchbox WM + supervised Claude)
+# =============================================================================
+
+@test "kasmvnc_mode: defaults to desktop, kiosk only when flagged" {
+	appliance_kiosk=0
+	[[ $(kasmvnc_mode) == desktop ]]
+	unset appliance_kiosk
+	[[ $(kasmvnc_mode) == desktop ]]
+	appliance_kiosk=1
+	[[ $(kasmvnc_mode) == kiosk ]]
+}
+
+@test "kasmvnc_xstartup: no arg / desktop stays the full XFCE session" {
+	[[ $(kasmvnc_xstartup) == *startxfce4* ]]
+	[[ $(kasmvnc_xstartup desktop) == *startxfce4* ]]
+	# and does NOT drag in the kiosk stack
+	[[ $(kasmvnc_xstartup) != *matchbox-window-manager* ]]
+}
+
+@test "kasmvnc_xstartup kiosk: WM + supervised launcher, no XFCE" {
+	local out
+	out=$(kasmvnc_xstartup kiosk)
+	[[ $out == *matchbox-window-manager* ]]   # kiosk WM
+	[[ $out == *xsetroot* ]]                   # branded backdrop
+	[[ $out == *cws-launch* ]]                 # guarded Claude launch
+	[[ $out == *'while :'* ]]                  # supervisor loop
+	[[ $out != *startxfce4* ]]                 # no desktop
+}
+
+# Stub the kiosk runtime deps so we can run the generated xstartup and
+# observe the launch path. The supervisor loop is infinite by design, so
+# the sleep stub SIGTERMs the loop shell ($PPID) after the first pass —
+# the run therefore exits on the signal, and we assert on the captured
+# output rather than a zero status.
+_kiosk_stub_bin() {
+	local dir="$TEST_TMP/kbin"
+	mkdir -p "$dir"
+	printf '%s\n' '#!/bin/sh' 'echo MATCHBOX' > "$dir/matchbox-window-manager"
+	printf '%s\n' '#!/bin/sh' 'echo XSETROOT' > "$dir/xsetroot"
+	printf '%s\n' '#!/bin/sh' 'echo CWS-LAUNCH' > "$dir/cws-launch"
+	printf '%s\n' '#!/bin/sh' 'kill "$PPID" 2>/dev/null' > "$dir/sleep"
+	printf '%s\n' '#!/bin/sh' 'echo DBUS-RUN-SESSION' \
+		'[ "$1" = "--" ] && shift' 'exec "$@"' > "$dir/dbus-run-session"
+	chmod +x "$dir"/*
+	printf '%s' "$dir"
+}
+
+@test "kasmvnc_xstartup kiosk: primary supervises Claude on the shared bus" {
+	local bin
+	bin=$(_kiosk_stub_bin)
+	kasmvnc_xstartup kiosk > "$TEST_TMP/xstartup"
+	chmod +x "$TEST_TMP/xstartup"
+	run env PATH="$bin:$PATH" HOME="$TEST_TMP" DISPLAY=:1 \
+		sh "$TEST_TMP/xstartup"
+	[[ $output == *CWS-LAUNCH* ]]           # Claude launched via guardian
+	[[ $output != *DBUS-RUN-SESSION* ]]     # primary uses the shared bus
+	[[ $output != *STARTXFCE4* ]]
+}
+
+@test "kasmvnc_xstartup kiosk: extra session re-execs under a private bus" {
+	local bin
+	bin=$(_kiosk_stub_bin)
+	kasmvnc_xstartup kiosk > "$TEST_TMP/xstartup"
+	chmod +x "$TEST_TMP/xstartup"
+	run env PATH="$bin:$PATH" HOME="$TEST_TMP" DISPLAY=:50 \
+		DBUS_SESSION_BUS_ADDRESS="unix:path=$TEST_TMP/shared-bus" \
+		sh "$TEST_TMP/xstartup"
+	# private bus first, then the supervised Claude launch
+	[[ $output == *DBUS-RUN-SESSION*CWS-LAUNCH* ]]
+	# extra session redirected its own config home
+	[[ -d $TEST_TMP/.config/cws-sessions/50 ]]
+}
+
+@test "install_kiosk_deps: installs matchbox, idempotent when present" {
+	# not installed -> installs matchbox + xsetroot provider
+	command() { return 1; }
+	pkg_install() { printf 'PKG %s\n' "$*"; }
+	run profile_kasmvnc_install_kiosk_deps
+	[[ $status -eq 0 ]]
+	[[ $output == *'matchbox-window-manager'* ]]
+	[[ $output == *'x11-xserver-utils'* ]]
+	# already present -> no install
+	command() { return 0; }
+	run profile_kasmvnc_install_kiosk_deps
+	[[ $status -eq 0 ]]
+	[[ $output == *'already installed'* ]]
+}

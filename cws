@@ -19,6 +19,7 @@
 #   cws storage add|remove|list   optional cloud-drive mounts (rclone)
 #   cws ssh-config [flags]        managed-settings sshConfigs JSON
 #   cws credentials [NAME]        show a user's kasmVNC sign-in
+#   cws kiosk on|off|status       Claude-only kiosk UI vs full desktop
 #   cws update                    update the installed tree (git)
 #   cws reconfigure               re-apply config after an update
 #   cws version | cws help
@@ -37,7 +38,7 @@ info() { printf '[cws] %s\n' "$*"; }
 err()  { printf '[cws] ERROR: %s\n' "$*" >&2; }
 
 usage() {
-	sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # Same TTY seam as the setup wizard (APPLIANCE_ASSUME_TTY=1 for tests).
@@ -211,6 +212,57 @@ cmd_version() {
 	printf 'cws %s\n' "${v:-unknown}"
 }
 
+# `cws kiosk on|off|status` — flip the box between the Claude-only kiosk
+# UI and the full desktop. Persists the flag to appliance.conf and
+# reconfigures; the next session start picks it up.
+cmd_kiosk() {
+	local action="${1:-status}"
+	local conf="$cws_etc/appliance.conf"
+	local cur
+	cur=$(grep -m1 '^kiosk=' "$conf" 2> /dev/null | cut -d= -f2)
+	cur="${cur:-0}"
+
+	case "$action" in
+		status)
+			if [[ $cur == 1 ]]; then
+				info 'kiosk: on (Claude-only appliance UI)'
+			else
+				info 'kiosk: off (full desktop)'
+			fi
+			return 0
+			;;
+		on|off) ;;
+		*)
+			err "usage: cws kiosk [on|off|status]"
+			return 1
+			;;
+	esac
+
+	if [[ $EUID -ne 0 ]]; then
+		err 'kiosk on/off must run as root (writes /etc + reconfigures);' \
+			'try: sudo cws kiosk '"$action"
+		return 1
+	fi
+	if [[ ! -f $conf ]]; then
+		err "no appliance.conf at $conf; run 'cws setup' first"
+		return 1
+	fi
+
+	local want=1
+	[[ $action == off ]] && want=0
+	if [[ $cur == "$want" ]]; then
+		info "kiosk already $action; reapplying anyway"
+	fi
+	# Upsert kiosk=<want>: replace the line if present, else append.
+	if grep -q '^kiosk=' "$conf"; then
+		sed -i "s/^kiosk=.*/kiosk=$want/" "$conf" || return 1
+	else
+		printf 'kiosk=%s\n' "$want" >> "$conf" || return 1
+	fi
+	info "kiosk set to $action; reconfiguring…"
+	exec "$cws_dir/setup.sh" reconfigure
+}
+
 cmd_update() {
 	if [[ ! -d $cws_dir/.git ]]; then
 		err "no git checkout at $cws_dir (tarball install);" \
@@ -360,6 +412,7 @@ main() {
 		credentials) cmd_credentials "$@" ;;
 		update)      cmd_update ;;
 		reconfigure) exec "$cws_dir/setup.sh" reconfigure "$@" ;;
+		kiosk)       cmd_kiosk "$@" ;;
 		version|--version|-V) cmd_version ;;
 		help|--help|-h) usage ;;
 		'')

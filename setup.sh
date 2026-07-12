@@ -217,8 +217,19 @@ run_reconfigure() {
 	local profile
 	profile=$(grep -m1 '^profile=' "$conf" 2> /dev/null | cut -d= -f2)
 	profile="${profile:-kasmvnc}"
-	log_info "reconfigure: re-applying config (profile: $profile)"
+	# Reapply the persisted UI mode so xstartup regenerates as kiosk or
+	# desktop to match how the box was provisioned.
+	appliance_kiosk=$(grep -m1 '^kiosk=' "$conf" 2> /dev/null | cut -d= -f2)
+	appliance_kiosk="${appliance_kiosk:-0}"
+	log_info "reconfigure: re-applying config (profile: $profile," \
+		"kiosk: $appliance_kiosk)"
 	install_polkit_rules || return 1
+	# Kiosk needs its minimal WM present. This is the one package
+	# reconfigure may install — idempotent (a no-op once matchbox is
+	# there) — so `cws kiosk on && cws reconfigure` is self-sufficient.
+	if [[ $appliance_kiosk -eq 1 && $profile == kasmvnc ]]; then
+		profile_kasmvnc_install_kiosk_deps || return 1
+	fi
 	reconfigure_user "$user" "$appliance_kasm_base_port" "$profile" \
 		|| return 1
 	local reg="$appliance_etc/members.tsv"
@@ -251,6 +262,10 @@ main() {
 	local mode='setup'
 	appliance_dry_run=0
 	appliance_force=0
+	# Kiosk mode (Claude-only appliance UI) is opt-in; APPLIANCE_KIOSK=1
+	# or --kiosk turns it on. Persisted to appliance.conf so reconfigure
+	# and member.sh reapply the same shape.
+	appliance_kiosk=${APPLIANCE_KIOSK:-0}
 
 	case "${1:-}" in
 		doctor)      mode='doctor'; shift ;;
@@ -275,6 +290,8 @@ main() {
 			              access_allow="$2"; shift 2 ;;
 			--dry-run)    appliance_dry_run=1; shift ;;
 			--force)      appliance_force=1; shift ;;
+			--kiosk)      appliance_kiosk=1; shift ;;
+			--no-kiosk)   appliance_kiosk=0; shift ;;
 			-h|--help)    usage; return 0 ;;
 			*)
 				log_err "unknown argument '$1'"
@@ -391,6 +408,7 @@ main() {
 	{
 		printf 'profile=%s\n' "$profile"
 		printf 'hostname=%s\n' "$hostname"
+		printf 'kiosk=%s\n' "$appliance_kiosk"
 	} | appliance_force=1 write_file "$appliance_etc/appliance.conf" \
 		|| return 1
 

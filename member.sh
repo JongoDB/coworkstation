@@ -251,6 +251,12 @@ cmd_add() {
 	# vncserver that either exits 1 (no cert) or loops forever on the
 	# interactive control-user prompt (no ~/.kasmpasswd) — a member whose
 	# session never binds a listener.
+	# Match the box's provisioned UI mode so a new member's xstartup is
+	# generated as kiosk or desktop like everyone else (matchbox is
+	# installed box-wide at setup / when kiosk is enabled).
+	appliance_kiosk=$(grep -m1 '^kiosk=' \
+		"$appliance_etc/appliance.conf" 2> /dev/null | cut -d= -f2)
+	appliance_kiosk="${appliance_kiosk:-0}"
 	profile_kasmvnc_setup_cert "$name" || return 1
 	profile_kasmvnc_write_config "$name" "$port" || return 1
 	profile_kasmvnc_setup_auth "$name" || return 1

@@ -46,6 +46,37 @@ teardown() {
 	[[ $output == *'cws setup'* ]]
 }
 
+@test "cws help lists the kiosk toggle" {
+	run bash "$CWS" help
+	[[ $status -eq 0 ]]
+	[[ $output == *'cws kiosk'* ]]
+}
+
+@test "cws kiosk status: off by default, on when the conf flag is set" {
+	run bash "$CWS" kiosk status
+	[[ $status -eq 0 ]]
+	[[ $output == *'kiosk: off'* ]]
+	printf 'profile=kasmvnc\nkiosk=1\n' > "$APPLIANCE_ETC/appliance.conf"
+	run bash "$CWS" kiosk status
+	[[ $status -eq 0 ]]
+	[[ $output == *'kiosk: on'* ]]
+}
+
+@test "cws kiosk on: refuses without root and names the escalation" {
+	[[ $EUID -eq 0 ]] && skip 'root would pass the gate and reconfigure'
+	printf 'profile=kasmvnc\n' > "$APPLIANCE_ETC/appliance.conf"
+	run bash "$CWS" kiosk on
+	[[ $status -ne 0 ]]
+	[[ $output == *'must run as root'* ]]
+	[[ $output == *'sudo cws kiosk on'* ]]
+}
+
+@test "cws kiosk: rejects a bad action" {
+	run bash "$CWS" kiosk sideways
+	[[ $status -ne 0 ]]
+	[[ $output == *'usage: cws kiosk'* ]]
+}
+
 @test "cws member list forwards to member.sh" {
 	run bash "$CWS" member list
 	[[ $status -eq 0 ]]

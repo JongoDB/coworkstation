@@ -99,22 +99,38 @@ forwards it.
 
 ### 3. Branded login page + PWA
 
-**Verify first (10 min on box):** whether the kasm gate authenticates
-via raw Basic auth or its own cookie login page — this decides effort.
+**Verified on box (spike #3, 2026-07-12):** the kasm gate is **raw HTTP
+Basic auth** — each display's Xvnc httpd (ports 8443/8444/8492) answers
+`WWW-Authenticate: Basic realm="Websockify"`, backed by `~/.kasmpasswd`.
+There is **no built-in cookie login page to theme**. So the branded
+front door takes the **fallback branch**: a thin auth-proxy shim.
 
-**Recommended:** theme KasmVNC's built-in login UI and serve our assets
-from its existing web root, rather than a separate auth service.
-KasmVNC serves static files from a customizable www dir; theming its
-login gets branding *and* inherits its cookie session — no new daemon.
-Fall back to a thin reverse-proxy shim only if its login is
-un-themeable or Basic-auth-only.
+**Approach — auth-proxy shim.** A small reverse proxy sits in front of
+the per-display kasm httpd and:
+- serves `/login` (branded static page) + the PWA assets unauthenticated;
+- on `POST /login`, validates the submitted password by attempting the
+  upstream kasm auth, then sets a signed HttpOnly session cookie;
+- for the kasm client + `websockify` WebSocket, requires the cookie and
+  injects `Authorization: Basic` upstream (kasm demands Basic, and
+  `.kasmpasswd` stores only a hash, so the shim holds the plaintext in a
+  server-side session keyed by the cookie — same secret already in use).
+
+This is the "separate auth microservice" the first draft listed as
+out-of-scope; spike #3 moved it **in** scope. Keep it minimal (one small
+service, e.g. Caddy/Go/Node) and per-box. It also hosts the PWA assets,
+so there is no need to write into kasm's root.
 
 **Why cookie-based:** a standalone PWA + Basic auth is exactly the
 clunky combo we are removing. A cookie set by the login form persists in
 the PWA's standalone context — log in once, re-launch straight into the
 session. The login page also forwards DPR (see §2).
 
-**PWA assets** in the same web root:
+**Why cookie-based:** a standalone PWA + Basic auth is exactly the
+clunky combo we are removing. A cookie set by the login form persists in
+the PWA's standalone context — log in once, re-launch straight into the
+session. The login page also forwards DPR (see §2).
+
+**PWA assets** served by the shim:
 - `manifest.json` — `display: standalone`, `orientation: any` (so iPad
   landscape works; phones stay portrait by how they're held), maskable
   192/512 icons, `theme_color`, `start_url` = kiosk.
@@ -214,7 +230,7 @@ touch/keyboard polish → mobile per-file bridge.
 - Live folder sync on mobile (desktop-client only; mobile gets per-file
   transfer).
 - Screenshare on any client (blocked upstream; #12).
-- A separate auth microservice (theme the built-in login unless it
-  proves un-themeable).
+- Rich session management in the auth shim (multi-factor, account
+  self-service). It is a single-password gate + cookie; keep it thin.
 - Caching the VNC stream in the service worker (install/splash only).
 - A native Android/iOS app (the PWA is the deliverable).
