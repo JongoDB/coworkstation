@@ -218,6 +218,15 @@ const server = http.createServer((req, res) => {
 	if (!isAuthed(req)) {
 		return res.writeHead(302, { Location: '/cws-login' }).end();
 	}
+	// Pin kiosk client defaults on the bare root so every entry point
+	// (PWA start_url, login redirect, a direct visit) loads the kasm
+	// client with the on-screen keyboard control enabled — it is off by
+	// default and phones have no other way to summon the soft keyboard.
+	if (url === '/') {
+		return res.writeHead(302, {
+			Location: '/?virtual_keyboard_visible=true',
+		}).end();
+	}
 	proxyHttp(req, res);
 });
 

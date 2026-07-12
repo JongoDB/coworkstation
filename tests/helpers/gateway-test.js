@@ -156,6 +156,13 @@ async function main() {
 		die('authed request not proxied: ' + res.status + ' ' + res.body);
 	}
 
+	// 5b. authed bare root redirects with the kiosk keyboard default
+	res = await req({ port: GW_PORT, path: '/', headers: { Cookie: cookie } });
+	if (res.status !== 302
+		|| !/virtual_keyboard_visible=true/.test(res.headers.location || '')) {
+		die('authed bare root should redirect with the keyboard param');
+	}
+
 	// 6. tampered cookie is rejected
 	const tampered = cookie.replace(/.$/, (c) => (c === 'A' ? 'B' : 'A'));
 	res = await req({ port: GW_PORT, path: '/', headers: { Cookie: tampered } });
