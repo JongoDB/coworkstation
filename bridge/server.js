@@ -332,32 +332,57 @@ const PAGE = `<!DOCTYPE html>
 <link rel="manifest" href="/bridge/manifest.webmanifest">
 <link rel="icon" href="/bridge/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/bridge/icon.svg">
-<meta name="theme-color" content="#1b2a4a">
+<meta name="theme-color" content="#1c1c1c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Coworkstation">
 <style>
- body{font-family:system-ui,sans-serif;margin:2rem auto;max-width:640px;
-      padding:0 1rem;line-height:1.5}
- button{font-size:1rem;padding:.6rem 1.2rem;margin:.3rem .4rem .3rem 0;
-        border-radius:8px;border:1px solid #999;cursor:pointer}
- #sharing{display:none;background:#c62828;color:#fff;padding:.6rem 1rem;
-          border-radius:8px;font-weight:700;margin:.5rem 0}
- .ok{color:#1b7f4d}.err{color:#c62828}
- code{background:#eee;padding:.1rem .35rem;border-radius:4px}
+ :root{color-scheme:dark;--brand:#dd6042}
+ *{box-sizing:border-box}
+ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      background:#1c1c1c;color:#ececec;max-width:620px;margin:0 auto;line-height:1.55;
+      padding:max(20px,env(safe-area-inset-top)) 20px max(24px,env(safe-area-inset-bottom))}
+ header{display:flex;align-items:center;gap:12px;margin:6px 0 18px}
+ header img{width:40px;height:40px;border-radius:11px}
+ header .t{font-size:18px;font-weight:600}
+ header a.back{margin-left:auto;color:var(--brand);text-decoration:none;font-size:13px}
+ h2{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:#8a8a8a;
+    margin:26px 0 8px}
+ p{color:#c8c8c8;font-size:14px}
+ button{font-size:15px;font-weight:600;padding:12px 18px;margin:4px 8px 4px 0;
+        border-radius:12px;border:0;background:#262626;color:#ececec;cursor:pointer}
+ button.primary{background:var(--brand);color:#fff}
+ button:active{transform:translateY(1px)}
+ #sharing{display:none;background:#3a1e1e;color:#ff8a80;padding:12px 16px;
+          border-radius:12px;font-weight:600;margin:12px 0}
+ .ok{color:#7fd6a2}.err{color:#ff8a80}
+ code{background:#2a2a2a;color:var(--brand);padding:.1rem .35rem;border-radius:6px;font-size:.9em}
+ textarea{background:#262626;border:1px solid #333;border-radius:12px;color:#fff;
+          padding:12px;width:100%;font:inherit}
+ small,.hint{color:#7a7a7a}
+ a{color:var(--brand)}
+ #screenshare[hidden]{display:none}
 </style></head><body>
-<h1>Coworkstation bridge</h1>
+<header>
+ <img src="/cws-icon-512.png" alt="">
+ <span class="t">Bridge</span>
+ <a class="back" href="/home">← Home</a>
+</header>
 <p>Make this device a source for your Claude session on the box.
 Everything here is off until you turn it on, and stops when you close
 this tab.</p>
 <div id="sharing">🔴 SCREEN SHARING IS ON — Claude can see the shared
 screen. Close the tab or press Stop to end it.</div>
+<div id="screenshare">
 <h2>Screen share</h2>
 <p>Claude sees ~1 frame/second of whatever you pick (screen, window,
 or tab). In a Cowork task, ask it to run
 <code>cws client screenshot ~/screen.jpg</code> on your device, then
 stage and view <code>~/screen.jpg</code>.</p>
-<button id="startScreen">Start screen share</button>
+<button class="primary" id="startScreen">Start screen share</button>
 <button id="stopScreen">Stop</button>
+</div>
+<p class="hint" id="noScreen" hidden>Screen share needs a desktop browser —
+phones and tablets don't expose a screen-capture API.</p>
 <h2>Folder share (desktop Chrome/Edge)</h2>
 <p>Files you pick are copied to <code>~/ClientBridge/</code> on the
 box. Re-sync any time; nothing else on this device is touched.</p>
@@ -442,6 +467,13 @@ async function syncDir() {
     }
     await walk(dirHandle, '');
     log('Synced ' + n + ' files to ~/ClientBridge/' + dirHandle.name, 'ok');
+}
+// Screen capture needs getDisplayMedia, which mobile browsers do not
+// expose — hide the whole section on phones/tablets rather than let the
+// user tap into a "getDisplayMedia is not a function" error.
+if (!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)) {
+    document.getElementById('screenshare').hidden = true;
+    document.getElementById('noScreen').hidden = false;
 }
 document.getElementById('startScreen').onclick =
     () => startScreen().catch(e => log(String(e), 'err'));
