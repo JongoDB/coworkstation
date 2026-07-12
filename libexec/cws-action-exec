@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#===============================================================================
+# cws-action-exec — root executor for the admin dashboard's actions
+#
+# Triggered by cws-action-exec.path when the admin gateway drops a request
+# JSON in /run/coworkstation/actions/. Each request is validated against a
+# FIXED allowlist — a specific `cws` call per action, run with an argv
+# array and strict param validators. NEVER a shell string, NEVER eval.
+# The mapped cws commands audit themselves to the ops log.
+#
+# Trust: the gateway is the only writer to the spool (0700, owner-only),
+# and it re-checks the password for destructive actions before enqueuing,
+# so a request present here is already authenticated. This executor only
+# re-validates shape/params as defense in depth.
+#===============================================================================
+set -uo pipefail
+
+SPOOL="${CWS_ACTION_SPOOL:-/run/coworkstation/actions}"
+CWS="${CWS_BIN:-/usr/local/bin/cws}"
+etc="${APPLIANCE_ETC:-/etc/coworkstation}"
+owner=$(grep -m1 '^owner=' "$etc/appliance.conf" 2> /dev/null | cut -d= -f2)
+owner="${owner:-cowork}"
+
+valid_name() { [[ ${1:-} =~ ^[a-z][a-z0-9_-]{0,30}$ ]]; }
+valid_mem() { [[ ${1:-} =~ ^[0-9]{1,5}[MG]$ ]]; }
+valid_cpu() { [[ ${1:-} =~ ^[0-9]{1,4}%$ ]]; }
+
+write_result() {
+	local id="$1" ok="$2" out="$3"
+	local f="$SPOOL/result-$id.json"
+	printf '{"id":"%s","ok":%s,"output":%s}\n' "$id" "$ok" \
+		"$(printf '%s' "$out" | jq -Rs .)" > "$f" || return 0
+	chgrp "$owner" "$f" 2> /dev/null || true
+	chmod 640 "$f" 2> /dev/null || true
+}
+
+run() {
+	local req="$1"
+	local id action user mem cpu allow keephome
+	id=$(jq -r '.id // ""' "$req" 2> /dev/null)
+	action=$(jq -r '.action // ""' "$req" 2> /dev/null)
+	user=$(jq -r '.user // ""' "$req" 2> /dev/null)
+	mem=$(jq -r '.mem // ""' "$req" 2> /dev/null)
+	cpu=$(jq -r '.cpu // ""' "$req" 2> /dev/null)
+	allow=$(jq -r '.allow // ""' "$req" 2> /dev/null)
+	keephome=$(jq -r '.keephome // false' "$req" 2> /dev/null)
+	rm -f "$req"
+	[[ -z $id ]] && return 0
+
+	local ok=false out=''
+	case "$action" in
+		session.restart | session.stop | session.start)
+			if valid_name "$user"; then
+				out=$("$CWS" sessions "${action#session.}" "$user" 2>&1) \
+					&& ok=true
+			else out='invalid user'; fi ;;
+		reclaim)
+			out=$("$CWS" reclaim 2>&1) && ok=true ;;
+		member.add)
+			if valid_name "$user" && valid_mem "$mem" && valid_cpu "$cpu"; then
+				if [[ -n $allow ]]; then
+					out=$("$CWS" member add "$user" "$mem" "$cpu" "$allow" 2>&1) \
+						&& ok=true
+				else
+					out=$("$CWS" member add "$user" "$mem" "$cpu" 2>&1) && ok=true
+				fi
+			else out='invalid params'; fi ;;
+		member.remove)
+			if valid_name "$user"; then
+				if [[ $keephome == true ]]; then
+					out=$("$CWS" member remove "$user" --keep-home 2>&1) && ok=true
+				else
+					out=$("$CWS" member remove "$user" 2>&1) && ok=true
+				fi
+			else out='invalid user'; fi ;;
+		*) out='unknown action' ;;
+	esac
+	write_result "$id" "$ok" "$out"
+}
+
+shopt -s nullglob
+for req in "$SPOOL"/req-*.json; do
+	run "$req"
+done

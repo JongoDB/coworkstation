@@ -50,6 +50,7 @@ Environment=CWS_GW_ROLE=${role}
 Environment=CWS_GW_BRIDGE_PORT=${bridge_port}
 Environment=CWS_GW_BRIDGE_TOKEN=${bridge_token}
 Environment=CWS_GW_FLEET=${fleet}
+Environment=CWS_GW_ACTIONS=$(gateway_action_spool)
 ExecStart=/usr/bin/env node ${dir}/server.js
 Restart=on-failure
 RestartSec=5
@@ -89,6 +90,67 @@ AccuracySec=5
 [Install]
 WantedBy=timers.target
 EOF
+}
+
+# --- admin action channel (tier C/B): spool + root executor ------------
+gateway_action_spool() { printf '/run/coworkstation/actions'; }
+
+# systemd units: a .path watches the spool for new requests and triggers a
+# oneshot that runs the executor as root. $1 = repo dir.
+action_exec_service() {
+	local dir="$1"
+	cat << EOF
+[Unit]
+Description=Coworkstation admin action executor
+
+[Service]
+Type=oneshot
+ExecStart=${dir}/libexec/cws-action-exec
+EOF
+}
+
+action_exec_path() {
+	cat << EOF
+[Unit]
+Description=Coworkstation admin action spool watcher
+
+[Path]
+PathExistsGlob=$(gateway_action_spool)/req-*.json
+Unit=cws-action-exec.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+# tmpfiles.d so /run/coworkstation/actions exists (owner-writable) across
+# reboots — /run is tmpfs. $1 = owner user.
+action_tmpfiles() {
+	local owner="$1"
+	cat << EOF
+d /run/coworkstation 0755 root root - -
+d $(gateway_action_spool) 0700 ${owner} ${owner} - -
+EOF
+}
+
+# Install the action channel (root). Idempotent. $1 = owner user.
+action_channel_install() {
+	local owner="$1"
+	local dir
+	dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
+		printf 'DRY-RUN: install admin action channel (owner %s)\n' "$owner"
+		return 0
+	fi
+	action_tmpfiles "$owner" \
+		| write_file /etc/tmpfiles.d/cws-actions.conf || return 1
+	run_cmd systemd-tmpfiles --create /etc/tmpfiles.d/cws-actions.conf || return 1
+	action_exec_service "$dir" \
+		| write_file /etc/systemd/system/cws-action-exec.service || return 1
+	action_exec_path \
+		| write_file /etc/systemd/system/cws-action-exec.path || return 1
+	run_cmd systemctl daemon-reload || return 1
+	run_cmd systemctl enable --now cws-action-exec.path
 }
 
 # Install + start the collector (root, box-wide). Idempotent.

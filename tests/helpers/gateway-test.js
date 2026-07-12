@@ -228,12 +228,28 @@ async function main() {
 
 	// 8. an ADMIN-role gateway exposes the admin routes + fleet snapshot
 	const ADMIN_PORT = 8793;
+	const actionsDir = path.join(tmp, 'actions');
+	fs.mkdirSync(actionsDir, { recursive: true });
+	// fake root executor: turn any req-*.json into an ok result
+	const execIv = setInterval(() => {
+		fs.readdirSync(actionsDir).forEach((fn) => {
+			var m = fn.match(/^req-(.+)\.json$/);
+			if (!m) return;
+			try {
+				var rq = JSON.parse(fs.readFileSync(path.join(actionsDir, fn), 'utf8'));
+				fs.unlinkSync(path.join(actionsDir, fn));
+				fs.writeFileSync(path.join(actionsDir, 'result-' + m[1] + '.json'),
+					JSON.stringify({ id: rq.id, ok: true, output: 'ran ' + rq.action }));
+			} catch (_) {}
+		});
+	}, 60);
 	const admin = spawn('node', [path.join(REPO, 'gateway', 'server.js')], {
 		env: Object.assign({}, process.env, {
 			CWS_GW_PORT: String(ADMIN_PORT), CWS_GW_UPSTREAM: String(UP_PORT),
 			CWS_GW_CRED: credFile, CWS_GW_SECRET: secretFile,
 			CWS_GW_WWW: path.join(REPO, 'gateway', 'www'),
 			CWS_GW_FLEET: fleetFile, CWS_GW_ROLE: 'admin',
+			CWS_GW_ACTIONS: actionsDir,
 		}),
 		stdio: ['ignore', 'ignore', 'inherit'],
 	});
@@ -247,10 +263,30 @@ async function main() {
 	}
 	res = await req({ port: ADMIN_PORT, path: '/admin', headers: { Cookie: cookie } });
 	if (res.status !== 200) die('admin gateway should serve /admin');
+
+	// 9. the action channel: valid action runs, unknown 400, destructive
+	// without a password 403, and the member gateway has no action route.
+	function action(port, obj) {
+		return req({ port: port, path: '/api/action', method: 'POST',
+			headers: { Cookie: cookie, 'Content-Type': 'application/json' } },
+			JSON.stringify(obj));
+	}
+	res = await action(ADMIN_PORT, { action: 'session.restart', user: 'bob' });
+	if (res.status !== 200 || !JSON.parse(res.body).ok) die('valid action should run ok');
+	res = await action(ADMIN_PORT, { action: 'bogus' });
+	if (res.status !== 400) die('unknown action should 400');
+	res = await action(ADMIN_PORT, { action: 'member.remove', user: 'bob' });
+	if (res.status !== 403) die('destructive action without password should 403');
+	res = await action(ADMIN_PORT, { action: 'member.remove', user: 'bob',
+		password: PASSWORD });
+	if (res.status !== 200 || !JSON.parse(res.body).ok) die('destructive action with password should run');
+	res = await action(GW_PORT, { action: 'session.restart', user: 'bob' });
+	if (res.status !== 404) die('member gateway must not expose /api/action');
+	clearInterval(execIv);
 	try { admin.kill('SIGKILL'); } catch (_) {}
 
 	console.log('gateway-test: OK (login, cookie, homepage, role gate, '
-		+ 'bridge token-inject, fleet, proxy, ws)');
+		+ 'bridge token-inject, fleet, actions, proxy, ws)');
 	cleanup();
 	process.exit(0);
 }

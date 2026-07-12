@@ -43,6 +43,25 @@
     border-radius: 10px; padding: 12px 16px; font-size: 14px; margin-top: 14px;
     cursor: not-allowed; width: 100%; }
   .note { color: #6f6f6f; font-size: 12px; margin-top: 8px; }
+  button.act { font-size: 12px; font-weight: 600; padding: 5px 11px; margin: 0 4px 0 0;
+    border-radius: 8px; border: 1px solid #3a3a3a; background: #262626; color: #ececec;
+    cursor: pointer; }
+  button.act.danger { border-color: #5a2a2a; color: #e08a8a; }
+  button.act:disabled { opacity: .5; cursor: default; }
+  .bar { display: flex; gap: 10px; align-items: center; margin: 0 0 14px; flex-wrap: wrap; }
+  .bar button { font-size: 14px; font-weight: 600; padding: 9px 14px; border-radius: 10px;
+    border: 1px solid #3a3a3a; background: #262626; color: #ececec; cursor: pointer; }
+  form.add { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 0 0 16px; }
+  form.add input { background: #262626; border: 1px solid #333; border-radius: 10px;
+    color: #fff; padding: 10px 12px; font: inherit; }
+  form.add input.wide { grid-column: 1 / -1; }
+  form.add button { grid-column: 1 / -1; background: var(--brand); color: #fff; border: 0;
+    border-radius: 10px; padding: 11px; font-weight: 600; cursor: pointer; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 12px; padding: 12px 18px;
+    max-width: 90%; font-size: 13px; display: none; box-shadow: 0 8px 30px rgba(0,0,0,.4); }
+  #toast.err { border-color: #5a2a2a; color: #e08a8a; }
+  #toast.ok { border-color: #2a5a3a; color: #8ad6a2; }
 </style>
 </head>
 <body>
@@ -60,8 +79,9 @@
     <p class="stale" id="stale"></p>
 
     <section class="panel" id="tab-monitoring">
+      <div class="bar"><button data-act="reclaim">Reclaim idle sessions</button></div>
       <table><thead><tr><th>Member</th><th>State</th><th>Display</th>
-        <th>Usage (tokens)</th><th>Last activity</th></tr></thead>
+        <th>Usage (tokens)</th><th>Session</th></tr></thead>
         <tbody id="members"></tbody></table>
       <h2>Recent activity</h2>
       <ul class="feed" id="audit"></ul>
@@ -73,12 +93,17 @@
     </section>
 
     <section class="panel" id="tab-members">
-      <table><thead><tr><th>Member</th><th>Display</th><th>State</th></tr></thead>
+      <form class="add" id="addForm" autocomplete="off">
+        <input name="user" placeholder="name (a–z, 0–9, - _)" required>
+        <input name="mem" placeholder="mem e.g. 6G" required>
+        <input name="cpu" placeholder="cpu e.g. 200%" required>
+        <input name="allow" class="wide" placeholder="Access allow-list (optional): email or domain">
+        <button type="submit">Add member</button>
+      </form>
+      <table><thead><tr><th>Member</th><th>Display</th><th>State</th><th></th></tr></thead>
         <tbody id="roster"></tbody></table>
-      <button class="ghost" disabled>+ Add member</button>
-      <p class="note">Member enrollment &amp; removal from the dashboard
-        arrives in an upcoming update; for now use <code>cws member</code>.</p>
     </section>
+    <div id="toast"></div>
   </main>
   <script src="/admin/cws-admin.js"></script>
 </body>

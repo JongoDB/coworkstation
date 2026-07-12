@@ -114,6 +114,42 @@ teardown() {
 	[[ $output == *'reroute cws.example.com -> 127.0.0.1:8443'* ]]
 }
 
+@test "action channel: units + tmpfiles wire the spool" {
+	local svc path_u tf
+	svc=$(action_exec_service /opt/coworkstation)
+	[[ $svc == *'Type=oneshot'* ]]
+	[[ $svc == *'/opt/coworkstation/libexec/cws-action-exec'* ]]
+	path_u=$(action_exec_path)
+	[[ $path_u == *'PathExistsGlob=/run/coworkstation/actions/req-*.json'* ]]
+	[[ $path_u == *'Unit=cws-action-exec.service'* ]]
+	tf=$(action_tmpfiles alice)
+	[[ $tf == *'/run/coworkstation/actions 0700 alice alice'* ]]
+}
+
+@test "action executor: allowlist maps + validates, writes results" {
+	local spool="$TEST_TMP/actions" etc="$TEST_TMP/etc" bin="$TEST_TMP/bin"
+	mkdir -p "$spool" "$etc" "$bin"
+	printf 'owner=alice\n' > "$etc/appliance.conf"
+	printf '#!/bin/sh\necho "CWS $*"\n' > "$bin/cws"; chmod +x "$bin/cws"
+	printf '{"id":"a1","action":"session.restart","user":"bob"}' > "$spool/req-a1.json"
+	printf '{"id":"a2","action":"session.restart","user":"BAD NAME"}' > "$spool/req-a2.json"
+	printf '{"id":"a3","action":"member.add","user":"carol","mem":"6G","cpu":"200%%"}' \
+		> "$spool/req-a3.json"
+	run env CWS_ACTION_SPOOL="$spool" CWS_BIN="$bin/cws" APPLIANCE_ETC="$etc" \
+		"$SCRIPT_DIR/../libexec/cws-action-exec"
+	[[ $status -eq 0 ]]
+	# valid action -> mapped cws call, ok
+	grep -q '"ok":true' "$spool/result-a1.json"
+	grep -q 'sessions restart bob' "$spool/result-a1.json"
+	# invalid name -> rejected, not executed
+	grep -q '"ok":false' "$spool/result-a2.json"
+	grep -q 'invalid user' "$spool/result-a2.json"
+	# member.add with valid params -> mapped
+	grep -q 'member add carol 6G 200%' "$spool/result-a3.json"
+	# requests consumed
+	[[ ! -f $spool/req-a1.json ]]
+}
+
 @test "live: gateway login gate + cookie + proxy + websocket gate" {
 	if ! command -v node > /dev/null 2>&1; then
 		skip 'node not available'

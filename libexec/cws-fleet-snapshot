@@ -32,16 +32,16 @@ user_state() {
 }
 
 emit_member() {
-	local name="$1" display="${2:-1}"
-	printf '{"name":"%s","display":%s,"state":"%s","usageTokens":null,"devices":[]}' \
-		"$(json_esc "$name")" "$display" "$(user_state "$name")"
+	local name="$1" display="${2:-1}" is_owner="${3:-false}"
+	printf '{"name":"%s","display":%s,"state":"%s","owner":%s,"usageTokens":null,"devices":[]}' \
+		"$(json_esc "$name")" "$display" "$(user_state "$name")" "$is_owner"
 }
 
-members="$(emit_member "$owner" 1)"
+members="$(emit_member "$owner" 1 true)"
 if [[ -f $reg ]]; then
 	while IFS=$'\t' read -r name display _port _rest; do
 		[[ -z $name || $name == "$owner" ]] && continue
-		members+=",$(emit_member "$name" "${display:-?}")"
+		members+=",$(emit_member "$name" "${display:-?}" false)"
 	done < "$reg"
 fi
 

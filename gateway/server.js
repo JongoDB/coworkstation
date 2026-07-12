@@ -52,6 +52,15 @@ const BRIDGE_PORT = parseInt(process.env.CWS_GW_BRIDGE_PORT || '0', 10);
 const BRIDGE_TOKEN_FILE = process.env.CWS_GW_BRIDGE_TOKEN || '';
 // Read-only fleet snapshot the root collector writes (admin only).
 const FLEET_FILE = process.env.CWS_GW_FLEET || '';
+// Spool the admin gateway drops action requests into; a root executor
+// picks them up (tier C/B). Admin only.
+const ACTIONS_DIR = process.env.CWS_GW_ACTIONS || '';
+// Allowlist mirrored on the root side; `destructive` needs a password
+// re-check here before the request is even written.
+const ACTION_ALLOW = {
+	'session.restart': {}, 'session.stop': {}, 'session.start': {},
+	'reclaim': {}, 'member.add': {}, 'member.remove': { destructive: true },
+};
 
 function bridgeToken() {
 	try { return fs.readFileSync(BRIDGE_TOKEN_FILE, 'utf8').trim(); }
@@ -243,11 +252,13 @@ const server = http.createServer((req, res) => {
 
 	// --- admin monitoring (role-gated: the routes simply do not exist on
 	// a member gateway, so there is nothing to reach even by guessing) ---
-	if (p === '/admin' || p.startsWith('/admin/') || p === '/api/fleet') {
+	if (p === '/admin' || p.startsWith('/admin/') || p === '/api/fleet'
+		|| p === '/api/action') {
 		if (ROLE !== 'admin') return res.writeHead(404).end('not found');
 		if (p === '/admin' || p === '/admin/') return serveAsset('admin.html', res);
 		if (p === '/admin/cws-admin.js') return serveAsset('cws-admin.js', res);
 		if (p === '/api/fleet') return serveFleet(res);
+		if (p === '/api/action' && req.method === 'POST') return handleAction(req, res);
 		return res.writeHead(404).end('not found');
 	}
 
@@ -314,6 +325,54 @@ function serveFleet(res) {
 		}
 		res.writeHead(200, { 'Content-Type': 'application/json' });
 		res.end(buf);
+	});
+}
+
+function sendJson(res, code, obj) {
+	res.writeHead(code, { 'Content-Type': 'application/json' });
+	res.end(JSON.stringify(obj));
+}
+
+// Admin action: validate + password-recheck destructive ops, drop a
+// request in the spool for the root executor, then poll for its result.
+function handleAction(req, res) {
+	let body = '';
+	req.on('data', (c) => { body += c; if (body.length > 8192) req.destroy(); });
+	req.on('end', () => {
+		let a; try { a = JSON.parse(body); } catch (_) { a = {}; }
+		const spec = ACTION_ALLOW[a.action];
+		if (!spec) return sendJson(res, 400, { ok: false, output: 'unknown action' });
+		if (spec.destructive && !passwordOk(a.password)) {
+			return sendJson(res, 403, { ok: false, output: 'password required' });
+		}
+		if (!ACTIONS_DIR) return sendJson(res, 500, { ok: false, output: 'actions off' });
+		const id = crypto.randomBytes(9).toString('hex');
+		const reqObj = {
+			id, action: a.action, user: a.user || '', mem: a.mem || '',
+			cpu: a.cpu || '', allow: a.allow || '', keephome: !!a.keephome,
+		};
+		const reqFile = path.join(ACTIONS_DIR, 'req-' + id + '.json');
+		const resFile = path.join(ACTIONS_DIR, 'result-' + id + '.json');
+		try {
+			fs.writeFileSync(reqFile, JSON.stringify(reqObj), { mode: 0o600 });
+		} catch (_) { return sendJson(res, 500, { ok: false, output: 'spool write failed' }); }
+		// poll for the executor's result (member.add can be slow -> ~60s)
+		let tries = 0;
+		const iv = setInterval(() => {
+			tries += 1;
+			fs.readFile(resFile, 'utf8', (err, data) => {
+				if (!err) {
+					clearInterval(iv);
+					try { fs.unlinkSync(resFile); } catch (_) {}
+					res.writeHead(200, { 'Content-Type': 'application/json' });
+					return res.end(data);
+				}
+				if (tries > 120) {
+					clearInterval(iv);
+					sendJson(res, 202, { ok: false, output: 'still running — check back' });
+				}
+			});
+		}, 500);
 	});
 }
 

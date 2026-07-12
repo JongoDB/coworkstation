@@ -253,6 +253,7 @@ run_reconfigure() {
 	if [[ $appliance_kiosk -eq 1 && $profile == kasmvnc ]]; then
 		profile_kasmvnc_install_kiosk_deps || return 1
 		fleet_collector_install || return 1
+		action_channel_install "$user" || return 1
 	fi
 	# Session hostnames drive the kiosk gateway's tunnel reroute: primary
 	# from the conf, members derived from the base.
@@ -463,9 +464,11 @@ main() {
 
 	install_autostart "$user" || return 1
 
-	# Kiosk: the admin dashboard reads a root-collected fleet snapshot.
+	# Kiosk: the admin dashboard reads a root-collected fleet snapshot and
+	# runs its actions through the root spool executor (tier C/B).
 	if [[ ${appliance_kiosk:-0} -eq 1 && $profile == kasmvnc ]]; then
 		fleet_collector_install || return 1
+		action_channel_install "$user" || return 1
 	fi
 
 	# Put the cws CLI on PATH so post-install management is one command,
