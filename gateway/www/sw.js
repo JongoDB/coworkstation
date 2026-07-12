@@ -27,12 +27,18 @@ self.addEventListener('activate', function (e) {
 
 self.addEventListener('fetch', function (e) {
   var url = new URL(e.request.url);
-  // Only the static shell is cache-first; never intercept the session,
-  // the WebSocket, or the login POST.
+  // Network-FIRST for the static shell: always prefer a fresh copy (so a
+  // deployed update to the login/branding shows immediately), falling
+  // back to cache only when offline. Never intercept the session, the
+  // WebSocket, or the login POST.
   if (e.request.method === 'GET' && SHELL.indexOf(url.pathname) >= 0) {
-    e.respondWith(caches.match(e.request).then(function (hit) {
-      return hit || fetch(e.request);
-    }));
+    e.respondWith(
+      fetch(e.request).then(function (res) {
+        var copy = res.clone();
+        caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
+        return res;
+      }).catch(function () { return caches.match(e.request); })
+    );
   }
   // else: default network handling
 });
