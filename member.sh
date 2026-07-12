@@ -33,6 +33,8 @@ source "$cws_dir/lib/tunnel-api.sh"
 source "$cws_dir/lib/clientsync.sh"
 # shellcheck source=lib/clientbridge.sh
 source "$cws_dir/lib/clientbridge.sh"
+# shellcheck source=lib/gateway.sh
+source "$cws_dir/lib/gateway.sh"
 
 registry_file() { printf '%s/members.tsv' "$appliance_etc"; }
 
@@ -294,6 +296,15 @@ cmd_add() {
 		fi
 	else
 		log_warn 'no appliance hostname recorded; skipping ingress'
+	fi
+
+	# Kiosk: set the member's default browser and front their session with
+	# the branded-login gateway (matchbox/browser are already installed
+	# box-wide; here we just do the per-user wiring + tunnel reroute).
+	if [[ ${appliance_kiosk:-0} -eq 1 ]]; then
+		kasmvnc_set_default_browser "$name" || return 1
+		gateway_route "$name" "$display" "$port" "$member_host" on \
+			|| return 1
 	fi
 
 	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then

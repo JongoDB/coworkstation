@@ -36,12 +36,19 @@ function cleanup() {
 	try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) {}
 }
 
-// --- fake kasm upstream ------------------------------------------------
+// --- fake kasm upstream (requires Basic auth, like kasm) ---------------
+const EXPECT_AUTH = 'Basic ' + Buffer.from('cws:' + PASSWORD).toString('base64');
 const upstream = http.createServer((req, res) => {
+	if (req.headers.authorization !== EXPECT_AUTH) {
+		res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="x"' });
+		res.end('unauth');
+		return;
+	}
 	res.writeHead(200, { 'Content-Type': 'text/plain' });
 	res.end('UPSTREAM_OK ' + req.url);
 });
 upstream.on('upgrade', (req, socket) => {
+	if (req.headers.authorization !== EXPECT_AUTH) { socket.destroy(); return; }
 	const key = req.headers['sec-websocket-key'] || '';
 	const accept = crypto.createHash('sha1')
 		.update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')

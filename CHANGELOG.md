@@ -21,6 +21,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   immersive experience — see
   `docs/plans/2026-07-12-immersive-claude-kiosk-design.md`.
 
+- **Branded kiosk login is wired end to end.** `gateway_route on|off`
+  (in setup, `cws kiosk on/off`, reconfigure, and `member add`) stands up
+  the per-session gateway and repoints the Cloudflare tunnel (api mode)
+  from kasm to the gateway via `tunnel_api_reroute` — idempotent, with a
+  one-line rollback. The gateway keeps kasm's Basic auth on and **injects**
+  it upstream (from the same credentials it validates logins against), so
+  same-box local isolation is preserved and kasm's auth config is
+  untouched. Turning kiosk off routes the hostname back to kasm and tears
+  the gateway down.
+
 - **Default browser for OAuth sign-in (kiosk).** Claude's "Continue with
   Google" opens the system browser for the OAuth handoff; the appliance
   shipped none, so sign-in died with "Failed to execute default Web

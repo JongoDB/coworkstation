@@ -509,8 +509,14 @@ profile_kasmvnc_apply() {
 	if [[ $tunnel_mode == 'api' ]]; then
 		profile_kasmvnc_install_cloudflared || return 1
 		tunnel_api_provision "$hostname" "$port" \
-			"$token_file" "$allow_csv"
+			"$token_file" "$allow_csv" || return 1
 	else
-		profile_kasmvnc_setup_tunnel "$hostname" "$port"
+		profile_kasmvnc_setup_tunnel "$hostname" "$port" || return 1
+	fi
+	# Kiosk: stand up the branded-login gateway and route the hostname
+	# through it (the tunnel was just pointed at kasm; move it to the
+	# gateway, which injects kasm's Basic auth upstream).
+	if [[ ${appliance_kiosk:-0} -eq 1 ]]; then
+		gateway_route "$user" 1 "$port" "$hostname" on || return 1
 	fi
 }

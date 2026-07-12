@@ -658,6 +658,25 @@ tunnel_api_member_add() {
 	cf_access_ensure_app "$account" "$hostname" "$allow_csv"
 }
 
+# Point an already-provisioned hostname at a new local port — ingress
+# only, no DNS/Access changes. Idempotent + reconciling via
+# ingress_json_add. Used to route a kiosk hostname through the gateway
+# (and back to kasm on rollback). Args: hostname port
+tunnel_api_reroute() {
+	local hostname="$1"
+	local port="$2"
+	local token_file account tunnel
+	token_file=$(tunnel_conf_get token_file) || return 1
+	account=$(tunnel_conf_get account_id) || return 1
+	tunnel=$(tunnel_conf_get tunnel_id) || return 1
+
+	tunnel_api_load_token "$token_file" || return 1
+	local ingress
+	ingress=$(cf_tunnel_get_ingress "$account" "$tunnel" \
+		| ingress_json_add "$hostname" "$port") || return 1
+	cf_tunnel_put_ingress "$account" "$tunnel" "$ingress"
+}
+
 # Args: member_hostname
 tunnel_api_member_remove() {
 	local hostname="$1"

@@ -41,6 +41,8 @@ source "$cws_dir/lib/clientsync.sh"
 source "$cws_dir/lib/fleet.sh"
 # shellcheck source=lib/clientbridge.sh
 source "$cws_dir/lib/clientbridge.sh"
+# shellcheck source=lib/gateway.sh
+source "$cws_dir/lib/gateway.sh"
 # shellcheck source=lib/profiles/kasmvnc.sh
 source "$cws_dir/lib/profiles/kasmvnc.sh"
 # shellcheck source=lib/profiles/xrdp.sh
@@ -195,11 +197,18 @@ reconfigure_user() {
 	local user="$1"
 	local port="$2"
 	local profile="$3"
+	local display="${4:-1}"
+	local hostname="${5:-}"
 	case "$profile" in
 		kasmvnc) profile_kasmvnc_write_config "$user" "$port" \
 			|| return 1
 			if [[ ${appliance_kiosk:-0} -eq 1 ]]; then
 				kasmvnc_set_default_browser "$user" || return 1
+				gateway_route "$user" "$display" "$port" \
+					"$hostname" on || return 1
+			else
+				gateway_route "$user" "$display" "$port" \
+					"$hostname" off || return 1
 			fi ;;
 	esac
 	install_autostart "$user"
@@ -233,15 +242,23 @@ run_reconfigure() {
 	if [[ $appliance_kiosk -eq 1 && $profile == kasmvnc ]]; then
 		profile_kasmvnc_install_kiosk_deps || return 1
 	fi
+	# Session hostnames drive the kiosk gateway's tunnel reroute: primary
+	# from the conf, members derived from the base.
+	local base_host
+	base_host=$(grep -m1 '^hostname=' "$conf" 2> /dev/null | cut -d= -f2)
 	reconfigure_user "$user" "$appliance_kasm_base_port" "$profile" \
-		|| return 1
+		1 "$base_host" || return 1
 	local reg="$appliance_etc/members.tsv"
 	if [[ -f $reg ]]; then
-		local name display port _rest
+		local name display port _rest mhost
 		while IFS=$'\t' read -r name display port _rest; do
 			[[ -z $name ]] && continue
 			log_info "  member '$name' (display :$display)"
-			reconfigure_user "$name" "$port" "$profile" || return 1
+			mhost=''
+			[[ -n $base_host ]] && mhost=$(tunnel_api_child_hostname \
+				"$name" "$base_host")
+			reconfigure_user "$name" "$port" "$profile" \
+				"$display" "$mhost" || return 1
 		done < "$reg"
 	fi
 	log_info 'reconfigure complete; effective on next session start'

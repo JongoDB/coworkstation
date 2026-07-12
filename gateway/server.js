@@ -8,11 +8,14 @@
  * HTTP Basic auth dialog (kasmVNC is Basic-auth-only; there is no login
  * page to theme — see docs/plans/2026-07-12-immersive-claude-kiosk-design.md).
  *
- * kasm's own Basic auth is DISABLED when the gateway fronts it (operator
- * choice: gate at the shim). The Cloudflare tunnel routes the hostname to
- * THIS port; we serve the login + PWA assets, gate every other request on
- * a signed session cookie, and proxy the kasm client + its /websockify
- * WebSocket upstream to 127.0.0.1:UPSTREAM.
+ * The gate is the shim's signed session cookie. kasm keeps its own Basic
+ * auth ON (so a same-box local user still cannot reach the loopback kasm
+ * port without the password); the gateway INJECTS Authorization: Basic
+ * upstream from the same kasm-credentials it validates logins against, so
+ * the phone never sees a Basic dialog. The Cloudflare tunnel routes the
+ * hostname to THIS port; we serve the login + PWA assets, gate every
+ * other request on the cookie, and proxy the kasm client + its
+ * /websockify WebSocket upstream to 127.0.0.1:UPSTREAM.
  *
  * Pure Node stdlib — no npm deps, matching bridge/server.js. Runs as the
  * session user via a systemd user unit (see lib/gateway.sh).
@@ -104,21 +107,33 @@ function isAuthed(req) {
 
 // --- password check ----------------------------------------------------
 
-// The expected password is the kasm gate password, stored in plaintext in
-// ~/.vnc/kasm-credentials (password=...). Compared in constant time.
-function expectedPassword() {
+// The kasm gate credentials, stored in plaintext in ~/.vnc/kasm-credentials
+// (username=.../password=...). Read fresh each time (the file is tiny and
+// may be rotated); used both to validate the login and to inject Basic
+// auth upstream.
+function kasmCreds() {
 	try {
 		const txt = fs.readFileSync(CRED, 'utf8');
-		const m = txt.match(/^password=(.*)$/m);
-		return m ? m[1] : null;
-	} catch (_) { return null; }
+		const u = txt.match(/^username=(.*)$/m);
+		const p = txt.match(/^password=(.*)$/m);
+		return { user: u ? u[1] : null, pass: p ? p[1] : null };
+	} catch (_) { return { user: null, pass: null }; }
 }
 function passwordOk(submitted) {
-	const expected = expectedPassword();
+	const expected = kasmCreds().pass;
 	if (expected == null || submitted == null) return false;
 	const a = Buffer.from(String(submitted));
 	const b = Buffer.from(String(expected));
 	return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Authorization: Basic header for the upstream kasm httpd, so kasm keeps
+// its Basic auth on while the phone never sees the dialog. Null if the
+// credentials are unreadable (then kasm will 401 — fail closed).
+function upstreamAuth() {
+	const { user, pass } = kasmCreds();
+	if (user == null || pass == null) return null;
+	return 'Basic ' + Buffer.from(user + ':' + pass).toString('base64');
 }
 
 // --- static assets -----------------------------------------------------
@@ -203,9 +218,12 @@ const server = http.createServer((req, res) => {
 });
 
 function proxyHttp(req, res) {
+	const headers = Object.assign({}, req.headers);
+	const auth = upstreamAuth();
+	if (auth) headers.authorization = auth;   // kasm Basic, injected
 	const up = http.request({
 		host: '127.0.0.1', port: UPSTREAM, method: req.method,
-		path: req.url, headers: req.headers,
+		path: req.url, headers: headers,
 	}, (upRes) => {
 		res.writeHead(upRes.statusCode || 502, upRes.headers);
 		upRes.pipe(res);
@@ -218,11 +236,15 @@ function proxyHttp(req, res) {
 server.on('upgrade', (req, socket, head) => {
 	if (!isAuthed(req)) { socket.destroy(); return; }
 	const up = net.connect(UPSTREAM, '127.0.0.1', () => {
-		// replay the client's upgrade request line + headers verbatim
+		// replay the client's upgrade request, injecting the kasm Basic
+		// header (skip any client-sent Authorization so ours wins)
 		let raw = `${req.method} ${req.url} HTTP/1.1\r\n`;
 		for (let i = 0; i < req.rawHeaders.length; i += 2) {
+			if (req.rawHeaders[i].toLowerCase() === 'authorization') continue;
 			raw += `${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}\r\n`;
 		}
+		const auth = upstreamAuth();
+		if (auth) raw += `Authorization: ${auth}\r\n`;
 		raw += '\r\n';
 		up.write(raw);
 		if (head && head.length) up.write(head);

@@ -57,6 +57,39 @@ teardown() {
 	[[ $status -eq 0 ]]
 }
 
+@test "gateway_reroute: dry-run states the target, no API call" {
+	appliance_dry_run=1
+	run gateway_reroute cws.example.com 8701
+	[[ $status -eq 0 ]]
+	[[ $output == *'DRY-RUN: reroute cws.example.com -> 127.0.0.1:8701'* ]]
+}
+
+@test "gateway_reroute: empty hostname is a no-op" {
+	run gateway_reroute '' 8701
+	[[ $status -eq 0 ]]
+	[[ -z $output ]]
+}
+
+@test "gateway_route on: sets up the gateway and routes to its port" {
+	user_home() { printf '%s' "$TEST_TMP/home"; }
+	appliance_dry_run=1
+	run gateway_route cws 1 8443 cws.example.com on
+	[[ $status -eq 0 ]]
+	# gateway on port 8701 (display 1) fronting kasm 8443
+	[[ $output == *'DRY-RUN: gateway for cws (port 8701 -> kasm 8443)'* ]]
+	# and the hostname is pointed at the gateway port
+	[[ $output == *'reroute cws.example.com -> 127.0.0.1:8701'* ]]
+}
+
+@test "gateway_route off: routes back to kasm when a gateway existed" {
+	user_home() { printf '%s' "$TEST_TMP/home"; }
+	appliance_dry_run=1
+	run gateway_route cws 1 8443 cws.example.com off
+	[[ $status -eq 0 ]]
+	# back to the kasm port
+	[[ $output == *'reroute cws.example.com -> 127.0.0.1:8443'* ]]
+}
+
 @test "live: gateway login gate + cookie + proxy + websocket gate" {
 	if ! command -v node > /dev/null 2>&1; then
 		skip 'node not available'

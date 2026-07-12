@@ -129,20 +129,32 @@ Basic auth** — each display's Xvnc httpd (ports 8443/8444/8492) answers
 There is **no built-in cookie login page to theme**. So the branded
 front door takes the **fallback branch**: a thin auth-proxy shim.
 
-**Approach — auth-proxy shim.** A small reverse proxy sits in front of
-the per-display kasm httpd and:
-- serves `/login` (branded static page) + the PWA assets unauthenticated;
-- on `POST /login`, validates the submitted password by attempting the
-  upstream kasm auth, then sets a signed HttpOnly session cookie;
-- for the kasm client + `websockify` WebSocket, requires the cookie and
-  injects `Authorization: Basic` upstream (kasm demands Basic, and
-  `.kasmpasswd` stores only a hash, so the shim holds the plaintext in a
-  server-side session keyed by the cookie — same secret already in use).
+**Approach — auth-proxy shim (`gateway/server.js`, pure-Node stdlib).** A
+small per-user loopback reverse proxy (mirrors `bridge/server.js`;
+`lib/gateway.sh` provisions it like `clientbridge.sh`) that:
+- serves `/cws-login` (branded page) + PWA assets unauthenticated;
+- on `POST /cws-login`, validates the password against the plaintext in
+  `~/.vnc/kasm-credentials`, then sets a signed (HMAC) HttpOnly cookie,
+  and records the client's `devicePixelRatio` for cws-launch (§2);
+- for the kasm client + `/websockify` WebSocket, requires the cookie and
+  proxies upstream (raw-socket splice for the WS upgrade).
 
-This is the "separate auth microservice" the first draft listed as
-out-of-scope; spike #3 moved it **in** scope. Keep it minimal (one small
-service, e.g. Caddy/Go/Node) and per-box. It also hosts the PWA assets,
-so there is no need to write into kasm's root.
+**Kasm Basic stays ON; the gateway INJECTS it** (revised 2026-07-12).
+The original plan disabled kasm's Basic auth and gated only at the shim.
+But the gateway already reads the plaintext kasm password (to validate
+logins), so injecting `Authorization: Basic` upstream is ~5 lines — and
+it is strictly better: it **preserves same-box local isolation** (a
+local user still needs the password to hit the loopback kasm port), needs
+**no change to kasm's auth config** (avoids the undocumented
+`DisableBasicAuth` mechanism and a kasm restart), and shrinks the live
+cutover to "run gateway + reroute tunnel," with a one-line rollback
+(`gateway_reroute` back to the kasm port).
+
+The Cloudflare tunnel (api mode) is repointed hostname → gateway port via
+`tunnel_api_reroute` (idempotent, reconciling `ingress_json_add`); the
+gateway proxies to the kasm port. `gateway_route on|off` orchestrates
+setup + reroute, wired into setup/member/reconfigure behind the kiosk
+flag.
 
 **Why cookie-based:** a standalone PWA + Basic auth is exactly the
 clunky combo we are removing. A cookie set by the login form persists in

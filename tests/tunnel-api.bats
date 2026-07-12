@@ -245,6 +245,27 @@ teardown() {
 		"$CALL_LOG"
 }
 
+@test "tunnel_api_reroute: reconciles the hostname to the new port" {
+	tunnel_conf_get() {
+		case "$1" in
+			token_file) printf '%s' "$TEST_TMP/token" ;;
+			account_id) printf 'acct' ;;
+			tunnel_id)  printf 'tun' ;;
+		esac
+	}
+	tunnel_api_load_token() { return 0; }
+	cf_tunnel_get_ingress() {
+		printf '%s' '[{"hostname":"cws.example.com","service":"http://127.0.0.1:8443"},{"service":"http_status:404"}]'
+	}
+	cf_tunnel_put_ingress() { printf '%s' "$3" > "$TEST_TMP/put"; }
+	run tunnel_api_reroute cws.example.com 8701
+	[[ $status -eq 0 ]]
+	# the plain hostname rule now points at the gateway port; catch-all intact
+	[[ $(jq -r '.[] | select(.hostname=="cws.example.com") | .service' \
+		"$TEST_TMP/put") == 'http://127.0.0.1:8701' ]]
+	[[ $(jq -r '.[-1].service' "$TEST_TMP/put") == 'http_status:404' ]]
+}
+
 @test "tunnel_conf_get: reads keys and fails on absence" {
 	printf 'mode=api\ntunnel_id=tun-9\n' > "$APPLIANCE_ETC/tunnel.conf"
 	[[ $(tunnel_conf_get mode) == 'api' ]]

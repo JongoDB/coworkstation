@@ -71,9 +71,23 @@ teardown() {
 @test "reconfigure_user: regenerates the session config and autostart" {
 	profile_kasmvnc_write_config() { echo "wc $1 $2" >> "$TEST_TMP/calls"; }
 	install_autostart() { echo "as $1" >> "$TEST_TMP/calls"; }
+	gateway_route() { echo "gw $5" >> "$TEST_TMP/calls"; }
 	reconfigure_user alice 8443 kasmvnc
 	grep -qx 'wc alice 8443' "$TEST_TMP/calls"
 	grep -qx 'as alice' "$TEST_TMP/calls"
+	# desktop mode tears any gateway down (routes back to kasm)
+	grep -qx 'gw off' "$TEST_TMP/calls"
+}
+
+@test "reconfigure_user: kiosk sets browser + routes the gateway on" {
+	appliance_kiosk=1
+	profile_kasmvnc_write_config() { :; }
+	install_autostart() { :; }
+	kasmvnc_set_default_browser() { echo "browser $1" >> "$TEST_TMP/calls"; }
+	gateway_route() { echo "gw $1 $2 $3 $4 $5" >> "$TEST_TMP/calls"; }
+	reconfigure_user cws 8443 kasmvnc 1 cws.example.com
+	grep -qx 'browser cws' "$TEST_TMP/calls"
+	grep -qx 'gw cws 1 8443 cws.example.com on' "$TEST_TMP/calls"
 }
 
 @test "run_reconfigure: applies polkit + primary + every member" {

@@ -112,3 +112,48 @@ gateway_teardown() {
 	user_systemctl "$user" disable --now cws-gateway.service 2> /dev/null
 	rm -f "$unit"
 }
+
+# Point a hostname's tunnel ingress at a local port (api mode only; manual
+# mode gets a hint). Idempotent. $1 = hostname, $2 = port.
+gateway_reroute() {
+	local hostname="$1"
+	local port="$2"
+	[[ -z $hostname ]] && return 0
+	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
+		printf 'DRY-RUN: reroute %s -> 127.0.0.1:%s\n' "$hostname" "$port"
+		return 0
+	fi
+	if [[ $(tunnel_conf_get mode 2> /dev/null) == 'api' ]]; then
+		tunnel_api_reroute "$hostname" "$port" || return 1
+	else
+		log_info "manual tunnel: point $hostname -> 127.0.0.1:$port yourself"
+	fi
+}
+
+# Enable or disable the kiosk gateway for one session AND route its tunnel
+# accordingly. Turning off is a no-op unless a gateway was set up (so a
+# never-kiosk box never touches the tunnel). The kasm Basic gate stays on;
+# the gateway injects it, so 'off' just points the hostname back at kasm.
+# $1=user $2=display $3=kasm_port $4=hostname $5=on|off
+gateway_route() {
+	local user="$1"
+	local display="$2"
+	local kasm_port="$3"
+	local hostname="$4"
+	local mode="$5"
+	local gport
+	gport=$(gateway_port "$display")
+
+	if [[ $mode == on ]]; then
+		gateway_setup "$user" "$display" "$kasm_port" || return 1
+		gateway_reroute "$hostname" "$gport" || return 1
+	else
+		local home unit
+		home=$(user_home "$user") || return 0
+		unit="$home/.config/systemd/user/cws-gateway.service"
+		if [[ -f $unit || ${appliance_dry_run:-0} -eq 1 ]]; then
+			gateway_reroute "$hostname" "$kasm_port" || return 1
+			gateway_teardown "$user"
+		fi
+	fi
+}
