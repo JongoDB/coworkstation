@@ -11,3 +11,8 @@ node_modules/
 # editor
 .DS_Store
 *.swp
+
+# stray tooling artifacts
+.playwright-mcp/
+check*.png
+spike*.png
