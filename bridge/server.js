@@ -390,15 +390,6 @@ phones and tablets don't expose a screen-capture API.</p>
 box. Re-sync any time; nothing else on this device is touched.</p>
 <button id="pickFolder">Pick a folder & sync</button>
 <button id="resync">Re-sync</button>
-<h2>Clipboard</h2>
-<p>Bridges this device's clipboard and the box session's clipboard —
-works on iPad/Safari, where the desktop viewer can't. Text passes
-through the box only.</p>
-<textarea id="clipText" rows="3" style="width:100%;font:inherit"
- placeholder="Paste here (or use Send to read this device's clipboard)"
-></textarea><br>
-<button id="clipSend">Send to box</button>
-<button id="clipFetch">Fetch from box</button>
 <p><small>Tip: install this page as an app (Share &rarr; Add to Home
 Screen) — the link's token is remembered on this device.</small></p>
 <p id="log"></p>
@@ -491,46 +482,6 @@ document.getElementById('pickFolder').onclick = async () => {
 };
 document.getElementById('resync').onclick =
     () => syncDir().catch(e => log(String(e), 'err'));
-
-const clipBox = document.getElementById('clipText');
-document.getElementById('clipSend').onclick = async () => {
-    try {
-        // Prefer the device clipboard; WebKit allows readText only on
-        // a user gesture, and may still decline — textarea is the
-        // universal fallback.
-        if (!clipBox.value && navigator.clipboard &&
-            navigator.clipboard.readText) {
-            clipBox.value = await navigator.clipboard.readText()
-                .catch(() => '');
-        }
-        if (!clipBox.value) {
-            log('Nothing to send — paste into the box above first.', 'err');
-            return;
-        }
-        const r = await fetch('/bridge/clipboard',
-            { method: 'POST', headers: hdrs, body: clipBox.value });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error || r.status);
-        log('Sent to the box clipboard (' + j.target + ').', 'ok');
-    } catch (e) { log('Send failed: ' + e, 'err'); }
-};
-document.getElementById('clipFetch').onclick = async () => {
-    try {
-        const r = await fetch('/bridge/clipboard', { headers: hdrs });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error || r.status);
-        clipBox.value = j.text;
-        // Same user gesture, so WebKit permits the write; if it
-        // declines, the text is in the box for a manual copy.
-        let copied = false;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            copied = await navigator.clipboard.writeText(j.text)
-                .then(() => true, () => false);
-        }
-        log(copied ? 'Box clipboard copied to this device.'
-                   : 'Fetched — long-press the text above to copy.', 'ok');
-    } catch (e) { log('Fetch failed: ' + e, 'err'); }
-};
 </script></body></html>`;
 
 const MANIFEST = JSON.stringify({
