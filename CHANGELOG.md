@@ -7,6 +7,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Homepage hub + admin dashboard (v1).** After the branded login you
+  land on `/home` — a hub with **Open Claude**, **Bridge**, and (owner
+  only) **Monitoring / Devices / Members**. Role is baked per gateway
+  instance (`CWS_GW_ROLE`); a member gateway doesn't register the admin
+  routes at all, so the gating is server-side, not just hidden buttons.
+  The **bridge is now cookie-gated through the gateway** with its token
+  injected server-side — no more `/bridge/?t=<token>` URL (the direct
+  tunnel path rule is retired). Monitoring reads a read-only fleet
+  snapshot a root `cws-fleet-snapshot` systemd timer writes to
+  `/run/coworkstation/fleet.json` (`0640 root:owner`) — the one
+  privileged read, since members' homes are `0700`. Tiers C (session
+  controls) and B (member add/remove) layer on via an allowlisted spool
+  action channel — see `docs/plans/2026-07-12-admin-dashboard-design.md`.
+
 - **Kiosk mode — Claude-only appliance UI (`cws kiosk on|off|status`).**
   Opt-in (`setup --kiosk`, `APPLIANCE_KIOSK=1`, or `cws kiosk on`); the
   flag persists to `appliance.conf` so `reconfigure` and new members

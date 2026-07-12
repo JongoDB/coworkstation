@@ -1,7 +1,7 @@
 # Coworkstation homepage + admin dashboard
 
 Date: 2026-07-12
-Status: designed; implementing v1 (monitoring-first)
+Status: v1 shipped (2026-07-12); tiers C/B pending
 
 ## Problem
 
