@@ -209,8 +209,10 @@ const server = http.createServer((req, res) => {
 	}
 	if (p === '/manifest.webmanifest') return serveAsset('manifest.webmanifest', res);
 	if (p === '/sw.js') return serveAsset('sw.js', res);
-	if (p === '/cws-icon.svg') return serveAsset('cws-icon.svg', res);
 	if (p === '/cws-app.js') return serveAsset('cws-app.js', res);
+	if (p === '/cws-icon-192.png') return serveAsset('cws-icon-192.png', res);
+	if (p === '/cws-icon-512.png') return serveAsset('cws-icon-512.png', res);
+	if (p === '/apple-touch-icon.png') return serveAsset('apple-touch-icon.png', res);
 
 	// Everything else requires a valid session.
 	if (!isAuthed(req)) {

@@ -8,8 +8,9 @@
  */
 'use strict';
 
-var CACHE = 'cws-shell-v1';
-var SHELL = ['/cws-login', '/cws-app.js', '/cws-icon.svg', '/manifest.webmanifest'];
+var CACHE = 'cws-shell-v2';
+var SHELL = ['/cws-login', '/cws-app.js', '/cws-icon-512.png',
+	'/apple-touch-icon.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) {

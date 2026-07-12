@@ -6,12 +6,12 @@
 <meta name="theme-color" content="#1c1c1c">
 <title>Coworkstation</title>
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/cws-icon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Coworkstation">
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: dark; --brand: #db6a4a; --brand-press: #c25636; }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
@@ -22,29 +22,33 @@
              max(24px, env(safe-area-inset-bottom));
   }
   .card { width: 100%; max-width: 360px; text-align: center; }
-  .mark { width: 72px; height: 72px; margin: 0 auto 20px; display: block; }
-  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .mark {
+    width: 96px; height: 96px; margin: 0 auto 22px; display: block;
+    border-radius: 22px; box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; letter-spacing: .2px; }
   p.sub { margin: 0 0 28px; color: #9a9a9a; font-size: 14px; }
   form { display: flex; flex-direction: column; gap: 12px; }
   input[type=password] {
     width: 100%; padding: 14px 16px; font-size: 16px;
     background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 12px;
-    color: #fff; outline: none;
+    color: #fff; outline: none; transition: border-color .15s;
   }
-  input[type=password]:focus { border-color: #6b6b6b; }
+  input[type=password]:focus { border-color: var(--brand); }
   button {
     width: 100%; padding: 14px 16px; font-size: 16px; font-weight: 600;
-    background: #ececec; color: #1c1c1c; border: 0; border-radius: 12px;
-    cursor: pointer;
+    background: var(--brand); color: #fff; border: 0; border-radius: 12px;
+    cursor: pointer; transition: background .15s;
   }
-  button:active { transform: translateY(1px); }
+  button:hover { background: #e0764f; }
+  button:active { background: var(--brand-press); transform: translateY(1px); }
   .err { color: #ff8a80; font-size: 14px; min-height: 20px; margin: 4px 0 0; }
   .hint { margin-top: 24px; color: #6f6f6f; font-size: 12px; }
 </style>
 </head>
 <body>
   <main class="card">
-    <img class="mark" src="/cws-icon.svg" alt="">
+    <img class="mark" src="/cws-icon-512.png" alt="Coworkstation">
     <h1>Coworkstation</h1>
     <p class="sub">Sign in to your workspace</p>
     <form method="POST" action="/cws-login" autocomplete="on">
