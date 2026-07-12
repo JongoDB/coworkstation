@@ -115,15 +115,34 @@ device_scale_flag() {
 	fi
 }
 
-# Extra per-device sessions run on their own private D-Bus (see
-# lib/session.sh's dbus-run-session), whose xdg-desktop-portal exposes a
-# secret-service proxy with no working backend. Electron's default
-# gnome_libsecret probe then blocks at startup and the window never
-# paints. Force Chromium's plaintext 'basic' store so it never calls the
-# secret service. These sessions already cannot persist an encrypted
-# sign-in — the keyring is unavailable there — so this only removes the
-# hang. The primary session is left on the default: its shared user bus
-# has a responsive keyring.
+# Chromium secret-store backend to use for this session.
+#
+# Primary and member sessions share the user's D-Bus bus, which runs
+# gnome-keyring with an unlocked default keyring — and Claude Desktop
+# >= 1.19367 uses it (safeStorage.isEncryptionAvailable() is true there:
+# it writes a "Claude Safe Storage" os_crypt key to the keyring). So they
+# get 'gnome-libsecret' -> sign-in persists ENCRYPTED, the "sign-in won't
+# be saved" warning clears, and Cowork's device bridge/screenshare (which
+# needs the safeStorage enclave key) works.
+#
+# Extra per-device sessions (config home under cws-sessions/<N>) run on
+# their own private D-Bus (see lib/session.sh's dbus-run-session), whose
+# secret-service proxy has no working backend — Electron's libsecret probe
+# blocks at startup and the window never paints. They keep 'basic'
+# (plaintext, no secret-service probe, no hang); they cannot persist an
+# encrypted sign-in there anyway.
+#
+# Earlier builds (<= 1.18286) never used the keyring even on the shared
+# bus, so this file used to force 'basic' everywhere; the 1.19367 fix is
+# what makes the split worthwhile. See
+# docs/plans/2026-07-06-session-keyring-design.md.
+resolve_store_flag() {
+	case "$claude_config" in
+		*/cws-sessions/*) printf 'basic' ;;
+		*) printf 'gnome-libsecret' ;;
+	esac
+}
+
 main() {
 	guard_configs
 	clear_stale_singleton
@@ -136,17 +155,8 @@ main() {
 	local scale
 	scale=$(device_scale_flag)
 	[[ -n $scale ]] && extra+=("$scale")
-	# Always use the plaintext 'basic' store. Electron's safeStorage does
-	# NOT use the OS keyring on the current Claude Desktop build (verified:
-	# isEncryptionAvailable never true even with a correct, unlocked
-	# default keyring — see docs/plans/2026-07-06-session-keyring-design.md
-	# and JongoDB/coworkstation#12), so the keyring bought nothing and its
-	# create/unlock prompt was pure friction. --password-store=basic also
-	# means no secret-service probe, so no session (primary, member, or
-	# extra :50+) can hang on the keyring. Restore the keyring path (git
-	# history has prepare_keyring) if a Desktop build's safeStorage starts
-	# using libsecret.
-	exec "$launcher" --password-store=basic "${extra[@]}" "$@"
+	exec "$launcher" --password-store="$(resolve_store_flag)" \
+		"${extra[@]}" "$@"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then

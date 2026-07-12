@@ -79,14 +79,21 @@ _stub_launcher() {
 	chmod +x "$TEST_TMP/fake-launcher"
 }
 
-@test "main: guards, then execs with the plaintext store and passes args" {
+@test "resolve_store_flag: keyring on the shared bus, basic for extras" {
+	claude_config="$TEST_TMP/Claude"
+	[[ $(resolve_store_flag) == 'gnome-libsecret' ]]
+	claude_config="$TEST_TMP/.config/cws-sessions/50/Claude"
+	[[ $(resolve_store_flag) == 'basic' ]]
+}
+
+@test "main: guards, then execs primary with the keyring store + args" {
 	printf '{}' > "$CWS_CLAUDE_CONFIG/claude_desktop_config.json"
 	_stub_launcher
 	run main --some-flag
 	[[ $status -eq 0 ]]
-	# Electron ignores the OS keyring on this build, so every session uses
-	# the plaintext store — no keyring prompt, no secret-service hang.
-	[[ $output == *'LAUNCHED --password-store=basic --some-flag'* ]]
+	# Primary/member (shared bus, unlocked keyring, Claude >= 1.19367)
+	# get the encrypted libsecret store so sign-in persists.
+	[[ $output == *'LAUNCHED --password-store=gnome-libsecret --some-flag'* ]]
 	[[ -d $CWS_BACKUP_ROOT/claude_desktop_config.json ]]
 }
 
@@ -125,7 +132,7 @@ _stub_launcher() {
 	_stub_launcher
 	CWS_DEVICE_SCALE=2 run main --some-flag
 	[[ $status -eq 0 ]]
-	[[ $output == *'--password-store=basic --force-device-scale-factor=2 --some-flag'* ]]
+	[[ $output == *'--password-store=gnome-libsecret --force-device-scale-factor=2 --some-flag'* ]]
 }
 
 @test "main: extra session also uses the plaintext store" {
