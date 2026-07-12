@@ -102,11 +102,14 @@ _stub_launcher() {
 	[[ $output == '--force-device-scale-factor=1.5' ]]
 }
 
-@test "device_scale_flag: reads the per-session scale file" {
+@test "device_scale_flag: does NOT auto-read a captured scale file" {
+	# The login shim may write a device-scale file, but auto-applying it
+	# over kasm's CSS-px framebuffer would break the layout — so the flag
+	# comes only from the explicit env var, never the file.
 	unset CWS_DEVICE_SCALE
 	printf '3\n' > "$CWS_CLAUDE_CONFIG/device-scale"
 	run device_scale_flag
-	[[ $output == '--force-device-scale-factor=3' ]]
+	[[ -z $output ]]
 }
 
 @test "device_scale_flag: rejects junk and zero" {

@@ -164,7 +164,9 @@ function setSessionCookie(res) {
 		+ `HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_S}`);
 }
 
-// Persist the client's devicePixelRatio for cws-launch (crisp HiDPI).
+// Persist the client's devicePixelRatio. Captured for a FUTURE HiDPI
+// mode (device-px framebuffers); cws-launch does NOT auto-apply it today,
+// because over kasm's CSS-px framebuffer it would shrink the layout.
 function recordScale(dpr) {
 	if (!SCALE_FILE || !dpr) return;
 	const n = Number(dpr);

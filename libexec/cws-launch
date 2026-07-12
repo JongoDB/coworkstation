@@ -97,24 +97,18 @@ find_launcher() {
 	fi
 }
 
-# Optional HiDPI scaling for the kiosk. kasmVNC's remote-resize already
-# sizes the X framebuffer to the client's CSS viewport (verified: server
-# framebuffer == browser innerWidth/innerHeight), so Claude renders its
-# mobile-responsive layout at a phone-width viewport with no extra work.
-# But the framebuffer is CSS px — DPR-unaware — so on a retina phone the
-# image is upscaled and looks soft. If a device scale factor is provided
-# (the login shim records the client's devicePixelRatio), pass it to
-# Electron for crisp rendering. Unset -> Chromium's default (1:1 with the
-# framebuffer), i.e. today's behavior. Caveat: the flag is fixed at launch
-# while clients of different DPR can share a persistent session, so this
-# is an opt-in tuning knob, not a per-connection guarantee.
-# $1 (optional) = config home to read the scale file from.
+# Optional HiDPI scaling for the kiosk, via an EXPLICIT CWS_DEVICE_SCALE
+# env var only. kasmVNC's remote-resize sizes the X framebuffer to the
+# client's *CSS* viewport (verified: server framebuffer ==
+# browser innerWidth/innerHeight, DPR-unaware), so Claude already renders
+# its mobile layout at a phone-width viewport. Applying
+# --force-device-scale-factor=DPR on top of a CSS-px framebuffer would
+# *shrink* the logical viewport (e.g. 414 -> 138px) and BREAK the layout —
+# it only helps once the framebuffer is device-px, which is future work.
+# So this is a deliberate, manual knob; the login shim's captured
+# devicePixelRatio is NOT auto-applied. Unset -> Chromium's default.
 device_scale_flag() {
 	local s="${CWS_DEVICE_SCALE:-}"
-	if [[ -z $s ]]; then
-		local f="${1:-$claude_config}/device-scale"
-		[[ -r $f ]] && s=$(cat "$f" 2> /dev/null)
-	fi
 	# accept a positive decimal (e.g. 2 or 1.5); reject 0 and junk
 	if [[ $s =~ ^[0-9]+(\.[0-9]+)?$ && $s != 0 && $s != 0.0 ]]; then
 		printf -- '--force-device-scale-factor=%s' "$s"

@@ -41,15 +41,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   redirect handler (already registered by Claude Desktop) closes the
   loop back into the app.
 
-- **Optional HiDPI scaling in `cws-launch`** (`CWS_DEVICE_SCALE` or a
-  `device-scale` file in the session config home) passes
-  `--force-device-scale-factor` to Claude for crisp rendering on retina
-  phones/tablets. Default unset = today's behavior. kasmVNC remote-resize
+- **Optional HiDPI knob in `cws-launch`** (`CWS_DEVICE_SCALE` env var)
+  passes `--force-device-scale-factor` to Claude. kasmVNC remote-resize
   already sizes the X framebuffer to the client's CSS viewport (verified
   live: framebuffer == browser `innerWidth×innerHeight`), so Claude's
   mobile-responsive layout appears at a phone-width viewport with no
-  other change; this knob only sharpens it. Opt-in because the flag is
-  fixed at launch while clients of different DPR can share a session.
+  change. The flag is a **deliberate, manual** knob only — auto-applying
+  a captured devicePixelRatio over a CSS-px framebuffer would shrink the
+  logical viewport (414 → 138px) and break the layout, so the login
+  shim's captured DPR is recorded for a future device-px mode but is
+  **not** auto-applied.
 
 - **`cws client screenshot [DEST]`** copies the latest shared bridge
   frame to a file (refusing a missing or >20s-stale frame). Claude
