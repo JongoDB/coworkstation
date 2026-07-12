@@ -28,13 +28,30 @@ const secretFile = path.join(tmp, 'secret');
 const scaleFile = path.join(tmp, 'device-scale');
 fs.writeFileSync(credFile, `username=cws\npassword=${PASSWORD}\n`);
 
+const BRIDGE_PORT = 8792;
+const BRIDGE_TOKEN = 'brdgtok123';
+const tokenFile = path.join(tmp, 'bridge-token');
+const fleetFile = path.join(tmp, 'fleet.json');
+fs.writeFileSync(tokenFile, BRIDGE_TOKEN + '\n');
+fs.writeFileSync(fleetFile, JSON.stringify({ generated: 'now', members: [
+	{ name: 'cws', display: 1, state: 'active', usageTokens: 42 }] }));
+
 function die(msg) { console.error('FAIL:', msg); cleanup(); process.exit(1); }
 let gw;
 function cleanup() {
 	try { if (gw) gw.kill('SIGKILL'); } catch (_) {}
 	try { upstream.close(); } catch (_) {}
+	try { bridge.close(); } catch (_) {}
 	try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) {}
 }
+
+// --- fake bridge upstream: 200 only when the token is injected ----------
+const bridge = http.createServer((req, res) => {
+	const q = new URLSearchParams((req.url.split('?')[1] || ''));
+	if (q.get('t') !== BRIDGE_TOKEN) { res.writeHead(403).end('no token'); return; }
+	res.writeHead(200, { 'Content-Type': 'text/plain' });
+	res.end('BRIDGE_OK ' + req.url.split('?')[0]);
+});
 
 // --- fake kasm upstream (requires Basic auth, like kasm) ---------------
 const EXPECT_AUTH = 'Basic ' + Buffer.from('cws:' + PASSWORD).toString('base64');
@@ -99,6 +116,7 @@ function wsAttempt(cookie) {
 
 async function main() {
 	await new Promise((r) => upstream.listen(UP_PORT, '127.0.0.1', r));
+	await new Promise((r) => bridge.listen(BRIDGE_PORT, '127.0.0.1', r));
 
 	gw = spawn('node', [path.join(REPO, 'gateway', 'server.js')], {
 		env: Object.assign({}, process.env, {
@@ -108,6 +126,10 @@ async function main() {
 			CWS_GW_SECRET: secretFile,
 			CWS_GW_WWW: path.join(REPO, 'gateway', 'www'),
 			CWS_GW_SCALE_FILE: scaleFile,
+			CWS_GW_BRIDGE_PORT: String(BRIDGE_PORT),
+			CWS_GW_BRIDGE_TOKEN: tokenFile,
+			CWS_GW_FLEET: fleetFile,
+			CWS_GW_ROLE: 'member',   // default; admin checked separately
 		}),
 		stdio: ['ignore', 'ignore', 'inherit'],
 	});
@@ -135,18 +157,38 @@ async function main() {
 		die('wrong password should 303 e=1 with no cookie');
 	}
 
-	// 4. correct password + dpr -> cookie set, redirect to /, scale recorded
+	// 4. correct password + dpr -> cookie set, redirect to /home, scale saved
 	res = await req({ port: GW_PORT, path: '/cws-login', method: 'POST',
 		headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
 		'password=' + PASSWORD + '&dpr=3');
 	const setCookie = (res.headers['set-cookie'] || [])[0] || '';
-	if (res.status !== 302 || res.headers.location !== '/'
+	if (res.status !== 302 || res.headers.location !== '/home'
 		|| !/cws_gw=/.test(setCookie)) {
-		die('correct password should 302 / with a cws_gw cookie');
+		die('correct password should 302 /home with a cws_gw cookie');
 	}
 	const cookie = setCookie.split(';')[0];
 	if (fs.readFileSync(scaleFile, 'utf8').trim() !== '3') {
 		die('device scale not recorded from dpr');
+	}
+
+	// 4b. homepage served, role endpoint reports member, admin 404s
+	res = await req({ port: GW_PORT, path: '/home', headers: { Cookie: cookie } });
+	if (res.status !== 200 || !/Open Claude/.test(res.body)) {
+		die('homepage not served: ' + res.status);
+	}
+	res = await req({ port: GW_PORT, path: '/api/me', headers: { Cookie: cookie } });
+	if (res.status !== 200 || JSON.parse(res.body).role !== 'member') {
+		die('/api/me should report member role');
+	}
+	res = await req({ port: GW_PORT, path: '/admin', headers: { Cookie: cookie } });
+	if (res.status !== 404) die('admin route must 404 on a member gateway');
+	res = await req({ port: GW_PORT, path: '/api/fleet', headers: { Cookie: cookie } });
+	if (res.status !== 404) die('fleet route must 404 on a member gateway');
+
+	// 4c. bridge proxied with the token injected server-side (no token URL)
+	res = await req({ port: GW_PORT, path: '/bridge/x', headers: { Cookie: cookie } });
+	if (res.status !== 200 || !/BRIDGE_OK \/bridge\/x/.test(res.body)) {
+		die('bridge not proxied with token: ' + res.status + ' ' + res.body);
 	}
 
 	// 5. authed request is proxied to the upstream
@@ -179,7 +221,31 @@ async function main() {
 		die('unauthed websocket upgrade should be refused');
 	}
 
-	console.log('gateway-test: OK (login gate, cookie, proxy, dpr, ws gate)');
+	// 8. an ADMIN-role gateway exposes the admin routes + fleet snapshot
+	const ADMIN_PORT = 8793;
+	const admin = spawn('node', [path.join(REPO, 'gateway', 'server.js')], {
+		env: Object.assign({}, process.env, {
+			CWS_GW_PORT: String(ADMIN_PORT), CWS_GW_UPSTREAM: String(UP_PORT),
+			CWS_GW_CRED: credFile, CWS_GW_SECRET: secretFile,
+			CWS_GW_WWW: path.join(REPO, 'gateway', 'www'),
+			CWS_GW_FLEET: fleetFile, CWS_GW_ROLE: 'admin',
+		}),
+		stdio: ['ignore', 'ignore', 'inherit'],
+	});
+	await new Promise((r) => setTimeout(r, 500));
+	// same secret => the cookie is valid on the admin instance too
+	res = await req({ port: ADMIN_PORT, path: '/api/me', headers: { Cookie: cookie } });
+	if (JSON.parse(res.body).role !== 'admin') die('admin gateway should report admin');
+	res = await req({ port: ADMIN_PORT, path: '/api/fleet', headers: { Cookie: cookie } });
+	if (res.status !== 200 || JSON.parse(res.body).members[0].name !== 'cws') {
+		die('admin gateway should serve the fleet snapshot');
+	}
+	res = await req({ port: ADMIN_PORT, path: '/admin', headers: { Cookie: cookie } });
+	if (res.status !== 200) die('admin gateway should serve /admin');
+	try { admin.kill('SIGKILL'); } catch (_) {}
+
+	console.log('gateway-test: OK (login, cookie, homepage, role gate, '
+		+ 'bridge token-inject, fleet, proxy, ws)');
 	cleanup();
 	process.exit(0);
 }

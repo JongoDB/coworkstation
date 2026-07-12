@@ -29,26 +29,50 @@ teardown() {
 	[[ $(gateway_port 1) -gt 8600 ]]
 }
 
-@test "gateway_unit: wires the env + node server path" {
+@test "gateway_unit: wires the env + role/bridge/fleet + node server path" {
 	local unit
 	unit=$(gateway_unit /opt/coworkstation/gateway 8701 8443 \
 		/home/a/.vnc/kasm-credentials /home/a/.config/cws-gateway/secret \
-		/opt/coworkstation/gateway/www /home/a/.config/Claude/device-scale)
+		/opt/coworkstation/gateway/www /home/a/.config/Claude/device-scale \
+		admin 8601 /home/a/.config/cws-bridge/token /run/coworkstation/fleet.json)
 	[[ $unit == *'CWS_GW_PORT=8701'* ]]
 	[[ $unit == *'CWS_GW_UPSTREAM=8443'* ]]
 	[[ $unit == *'CWS_GW_CRED=/home/a/.vnc/kasm-credentials'* ]]
 	[[ $unit == *'CWS_GW_SECRET=/home/a/.config/cws-gateway/secret'* ]]
 	[[ $unit == *'CWS_GW_SCALE_FILE=/home/a/.config/Claude/device-scale'* ]]
+	[[ $unit == *'CWS_GW_ROLE=admin'* ]]
+	[[ $unit == *'CWS_GW_BRIDGE_PORT=8601'* ]]
+	[[ $unit == *'CWS_GW_BRIDGE_TOKEN=/home/a/.config/cws-bridge/token'* ]]
+	[[ $unit == *'CWS_GW_FLEET=/run/coworkstation/fleet.json'* ]]
 	[[ $unit == *'node /opt/coworkstation/gateway/server.js'* ]]
 }
 
-@test "gateway_setup: dry-run plans and touches nothing" {
+@test "gateway_setup: dry-run plans (with role) and touches nothing" {
 	user_home() { printf '%s' "$TEST_TMP/home"; }
 	appliance_dry_run=1
-	run gateway_setup alice 1 8443
+	run gateway_setup alice 1 8443 admin
 	[[ $status -eq 0 ]]
-	[[ $output == *'DRY-RUN: gateway for alice (port 8701 -> kasm 8443)'* ]]
+	[[ $output == *'DRY-RUN: gateway for alice (port 8701 -> kasm 8443, role admin)'* ]]
 	[[ ! -e $TEST_TMP/home/.config/systemd/user/cws-gateway.service ]]
+}
+
+@test "fleet collector: units + snapshot JSON" {
+	local svc timer
+	svc=$(fleet_collector_service /opt/coworkstation)
+	[[ $svc == *'Type=oneshot'* ]]
+	[[ $svc == *'CWS_FLEET_OUT=/run/coworkstation/fleet.json'* ]]
+	[[ $svc == *'/opt/coworkstation/libexec/cws-fleet-snapshot'* ]]
+	timer=$(fleet_collector_timer)
+	[[ $timer == *'OnUnitActiveSec=20'* ]]
+	[[ $timer == *'WantedBy=timers.target'* ]]
+	# the snapshot emits valid JSON with the owner as a member
+	export APPLIANCE_ETC="$TEST_TMP/etc"; mkdir -p "$APPLIANCE_ETC"
+	printf 'owner=alice\n' > "$APPLIANCE_ETC/appliance.conf"
+	run env APPLIANCE_ETC="$APPLIANCE_ETC" \
+		"$SCRIPT_DIR/../libexec/cws-fleet-snapshot"
+	[[ $status -eq 0 ]]
+	[[ $output == *'"name":"alice"'* ]]
+	[[ $output == *'"members":['* ]]
 }
 
 @test "gateway_teardown: no-op when no unit is present" {
@@ -73,10 +97,10 @@ teardown() {
 @test "gateway_route on: sets up the gateway and routes to its port" {
 	user_home() { printf '%s' "$TEST_TMP/home"; }
 	appliance_dry_run=1
-	run gateway_route cws 1 8443 cws.example.com on
+	run gateway_route cws 1 8443 cws.example.com on admin
 	[[ $status -eq 0 ]]
-	# gateway on port 8701 (display 1) fronting kasm 8443
-	[[ $output == *'DRY-RUN: gateway for cws (port 8701 -> kasm 8443)'* ]]
+	# gateway on port 8701 (display 1) fronting kasm 8443, as admin
+	[[ $output == *'gateway for cws (port 8701 -> kasm 8443, role admin)'* ]]
 	# and the hostname is pointed at the gateway port
 	[[ $output == *'reroute cws.example.com -> 127.0.0.1:8701'* ]]
 }

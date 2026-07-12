@@ -132,10 +132,12 @@ teardown() {
 	require_root() { return 0; }
 	install_polkit_rules() { :; }
 	profile_kasmvnc_install_kiosk_deps() { echo kioskdeps >> "$TEST_TMP/calls"; }
+	fleet_collector_install() { echo collector >> "$TEST_TMP/calls"; }
 	# reconfigure_user must see kiosk mode propagated from the conf
 	reconfigure_user() { echo "kiosk=${appliance_kiosk}" >> "$TEST_TMP/calls"; }
 	run_reconfigure cws
 	grep -qx 'kioskdeps' "$TEST_TMP/calls"
+	grep -qx 'collector' "$TEST_TMP/calls"
 	grep -qx 'kiosk=1' "$TEST_TMP/calls"
 }
 

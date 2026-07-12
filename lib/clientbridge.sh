@@ -148,7 +148,11 @@ clientbridge_setup() {
 	clientbridge_register_mcp "$user" "$bridge_dir" || return 1
 
 	# Route /bridge/* on the session hostname to this port (api mode).
-	if [[ -n $hostname ]]; then
+	# Under kiosk the gateway fronts everything: /bridge flows through it
+	# (cookie-gated, token injected server-side) via the plain hostname
+	# rule, so we DON'T add a direct /bridge path rule that would bypass
+	# the gateway (and expose the raw token URL).
+	if [[ -n $hostname && ${appliance_kiosk:-0} -ne 1 ]]; then
 		if [[ $(tunnel_conf_get mode 2> /dev/null) == 'api' ]]; then
 			tunnel_api_bridge_route "$hostname" "$port" || return 1
 		else

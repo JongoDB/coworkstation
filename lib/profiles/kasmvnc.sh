@@ -552,8 +552,9 @@ profile_kasmvnc_apply() {
 	fi
 	# Kiosk: stand up the branded-login gateway and route the hostname
 	# through it (the tunnel was just pointed at kasm; move it to the
-	# gateway, which injects kasm's Basic auth upstream).
+	# gateway, which injects kasm's Basic auth upstream). The primary user
+	# is the box owner -> admin role (the only one that sees the dashboard).
 	if [[ ${appliance_kiosk:-0} -eq 1 ]]; then
-		gateway_route "$user" 1 "$port" "$hostname" on || return 1
+		gateway_route "$user" 1 "$port" "$hostname" on admin || return 1
 	fi
 }

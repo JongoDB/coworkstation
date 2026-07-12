@@ -45,7 +45,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bats shellcheck jq
           shellcheck -x \
-            install.sh cws libexec/cws-launch client/cws-client setup.sh member.sh storage.sh gen-sshconfigs.sh \
+            install.sh cws libexec/cws-launch libexec/cws-fleet-snapshot client/cws-client setup.sh member.sh storage.sh gen-sshconfigs.sh \
             testbench/setup.sh lib/*.sh lib/profiles/*.sh
           bats --print-output-on-failure \
             tests/clientbridge.bats tests/clientsync.bats tests/common.bats tests/launch.bats tests/cws.bats tests/engine.bats tests/doctor.bats \

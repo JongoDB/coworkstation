@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1c1c1c">
+<title>Coworkstation</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Coworkstation">
+<style>
+  :root { color-scheme: dark; --brand: #dd6042; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #1c1c1c; color: #ececec;
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: max(28px, env(safe-area-inset-top)) 20px
+             max(28px, env(safe-area-inset-bottom));
+  }
+  header { text-align: center; margin: 12px 0 26px; }
+  .mark { width: 76px; height: 76px; border-radius: 18px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+  h1 { font-size: 20px; font-weight: 600; margin: 14px 0 2px; }
+  .sub { color: #9a9a9a; font-size: 13px; margin: 0; }
+  main { width: 100%; max-width: 420px; }
+  .grid { display: grid; gap: 12px; }
+  a.tile {
+    display: flex; align-items: center; gap: 14px; text-decoration: none;
+    color: #ececec; background: #262626; border: 1px solid #333;
+    border-radius: 14px; padding: 16px 18px; transition: background .15s;
+  }
+  a.tile:active { background: #2f2f2f; }
+  a.tile .ico { font-size: 22px; width: 26px; text-align: center; }
+  a.tile .t { font-weight: 600; }
+  a.tile .d { display: block; color: #9a9a9a; font-size: 12px; font-weight: 400; }
+  a.primary { background: var(--brand); border-color: var(--brand); }
+  a.primary:active { background: #c14e32; }
+  a.primary .d { color: rgba(255,255,255,.85); }
+  .section-label { color: #6f6f6f; font-size: 12px; text-transform: uppercase;
+    letter-spacing: .5px; margin: 26px 4px 10px; }
+  #admin { display: none; }        /* revealed by cws-home.js for the owner */
+  footer { margin-top: 28px; }
+  footer a { color: #6f6f6f; font-size: 13px; text-decoration: none; }
+</style>
+</head>
+<body>
+  <header>
+    <img class="mark" src="/cws-icon-512.png" alt="Coworkstation">
+    <h1>Coworkstation</h1>
+    <p class="sub">Your workspace</p>
+  </header>
+  <main>
+    <div class="grid">
+      <a class="tile primary" href="/">
+        <span class="ico">✳</span>
+        <span><span class="t">Open Claude</span>
+          <span class="d">Your full-screen workspace</span></span>
+      </a>
+      <a class="tile" href="/bridge/">
+        <span class="ico">🔗</span>
+        <span><span class="t">Bridge</span>
+          <span class="d">Share files &amp; clipboard with this device</span></span>
+      </a>
+    </div>
+
+    <div id="admin">
+      <div class="section-label">Admin</div>
+      <div class="grid">
+        <a class="tile" href="/admin">
+          <span class="ico">📊</span>
+          <span><span class="t">Monitoring</span>
+            <span class="d">Sessions, usage &amp; activity</span></span>
+        </a>
+        <a class="tile" href="/admin#devices">
+          <span class="ico">📱</span>
+          <span><span class="t">Devices</span>
+            <span class="d">Devices seen per member</span></span>
+        </a>
+        <a class="tile" href="/admin#members">
+          <span class="ico">👥</span>
+          <span><span class="t">Members</span>
+            <span class="d">Roster &amp; management</span></span>
+        </a>
+      </div>
+    </div>
+
+    <footer><a href="/cws-logout">Sign out</a></footer>
+  </main>
+  <script src="/cws-home.js"></script>
+</body>
+</html>

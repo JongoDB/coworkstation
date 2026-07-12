@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#===============================================================================
+# cws-fleet-snapshot — emit the read-only fleet snapshot JSON
+#
+# Run as root by cws-fleet-snapshot.timer (~every 20s) into
+# /run/coworkstation/fleet.json (0640 root:<owner>), which the OWNER's
+# admin gateway reads to render the monitoring view. Read-only: it never
+# mutates anything. Members' homes are 0700, so this privileged collector
+# is what lets the unprivileged gateway show cross-member state.
+#
+# v1 covers the roster + live session state reliably; usage/devices/audit
+# are best-effort placeholders the dashboard renders as they fill in.
+#===============================================================================
+set -uo pipefail
+
+etc="${APPLIANCE_ETC:-/etc/coworkstation}"
+conf="$etc/appliance.conf"
+reg="$etc/members.tsv"
+
+owner=$(grep -m1 '^owner=' "$conf" 2> /dev/null | cut -d= -f2)
+owner="${owner:-cowork}"
+
+json_esc() { printf '%s' "${1:-}" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+# active if the user's kasmVNC X server is running; down otherwise.
+user_state() {
+	if pgrep -u "$1" -x Xvnc > /dev/null 2>&1; then
+		printf 'active'
+	else
+		printf 'down'
+	fi
+}
+
+emit_member() {
+	local name="$1" display="${2:-1}"
+	printf '{"name":"%s","display":%s,"state":"%s","usageTokens":null,"devices":[]}' \
+		"$(json_esc "$name")" "$display" "$(user_state "$name")"
+}
+
+members="$(emit_member "$owner" 1)"
+if [[ -f $reg ]]; then
+	while IFS=$'\t' read -r name display _port _rest; do
+		[[ -z $name || $name == "$owner" ]] && continue
+		members+=",$(emit_member "$name" "${display:-?}")"
+	done < "$reg"
+fi
+
+snapshot() {
+	printf '{"generated":"%s","members":[%s],"audit":[]}\n' \
+		"$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$members"
+}
+
+# CWS_FLEET_OUT set -> write it atomically, readable only by the owner
+# (0640 root:<owner>); otherwise print to stdout.
+out="${CWS_FLEET_OUT:-}"
+if [[ -n $out ]]; then
+	mkdir -p "$(dirname "$out")" 2> /dev/null
+	tmp="$out.$$"
+	snapshot > "$tmp" || exit 1
+	chgrp "$owner" "$tmp" 2> /dev/null || true
+	chmod 640 "$tmp" 2> /dev/null || true
+	mv -f "$tmp" "$out"
+else
+	snapshot
+fi

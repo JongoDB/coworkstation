@@ -33,6 +33,7 @@ gateway_install_packages() {
 gateway_unit() {
 	local dir="$1" port="$2" upstream="$3" cred="$4"
 	local secret="$5" www="$6" scale_file="$7"
+	local role="$8" bridge_port="$9" bridge_token="${10}" fleet="${11}"
 	cat << EOF
 [Unit]
 Description=Coworkstation kiosk gateway (branded login)
@@ -45,6 +46,10 @@ Environment=CWS_GW_CRED=${cred}
 Environment=CWS_GW_SECRET=${secret}
 Environment=CWS_GW_WWW=${www}
 Environment=CWS_GW_SCALE_FILE=${scale_file}
+Environment=CWS_GW_ROLE=${role}
+Environment=CWS_GW_BRIDGE_PORT=${bridge_port}
+Environment=CWS_GW_BRIDGE_TOKEN=${bridge_token}
+Environment=CWS_GW_FLEET=${fleet}
 ExecStart=/usr/bin/env node ${dir}/server.js
 Restart=on-failure
 RestartSec=5
@@ -54,18 +59,67 @@ WantedBy=default.target
 EOF
 }
 
+# Read-only fleet snapshot the root collector writes (admin gateway reads).
+gateway_fleet_file() { printf '/run/coworkstation/fleet.json'; }
+
+# systemd system units for the root fleet-snapshot collector. $1 = repo dir.
+fleet_collector_service() {
+	local dir="$1"
+	cat << EOF
+[Unit]
+Description=Coworkstation fleet snapshot (admin dashboard)
+
+[Service]
+Type=oneshot
+Environment=CWS_FLEET_OUT=$(gateway_fleet_file)
+ExecStart=${dir}/libexec/cws-fleet-snapshot
+EOF
+}
+
+fleet_collector_timer() {
+	cat << 'EOF'
+[Unit]
+Description=Coworkstation fleet snapshot timer
+
+[Timer]
+OnBootSec=15
+OnUnitActiveSec=20
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+# Install + start the collector (root, box-wide). Idempotent.
+fleet_collector_install() {
+	local dir
+	dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
+		printf 'DRY-RUN: install cws-fleet-snapshot timer\n'
+		return 0
+	fi
+	fleet_collector_service "$dir" \
+		| write_file /etc/systemd/system/cws-fleet-snapshot.service || return 1
+	fleet_collector_timer \
+		| write_file /etc/systemd/system/cws-fleet-snapshot.timer || return 1
+	run_cmd systemctl daemon-reload || return 1
+	run_cmd systemctl enable --now cws-fleet-snapshot.timer
+}
+
 # Provision the gateway for a user. $1 = user, $2 = display number,
-# $3 = kasm websocket (upstream) port.
+# $3 = kasm websocket (upstream) port, $4 = role (admin|member).
 gateway_setup() {
 	local user="$1"
 	local display="${2:-1}"
 	local kasm_port="$3"
+	local role="${4:-member}"
 	local port
 	port=$(gateway_port "$display")
 
 	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
-		printf 'DRY-RUN: gateway for %s (port %s -> kasm %s)\n' \
-			"$user" "$port" "$kasm_port"
+		printf 'DRY-RUN: gateway for %s (port %s -> kasm %s, role %s)\n' \
+			"$user" "$port" "$kasm_port" "$role"
 		return 0
 	fi
 
@@ -89,10 +143,15 @@ gateway_setup() {
 
 	local cred="$home/.vnc/kasm-credentials"
 	local scale_file="$home/.config/Claude/device-scale"
+	local bridge_port bridge_token fleet
+	bridge_port=$(clientbridge_port "$display")
+	bridge_token="$home/.config/cws-bridge/token"
+	fleet=$(gateway_fleet_file)
 	local unit_dir="$home/.config/systemd/user"
 	run_as_user "$user" mkdir -p "$unit_dir" || return 1
 	gateway_unit "$gw_dir" "$port" "$kasm_port" "$cred" "$secret" \
-		"$gw_dir/www" "$scale_file" \
+		"$gw_dir/www" "$scale_file" "$role" "$bridge_port" \
+		"$bridge_token" "$fleet" \
 		| write_file "$unit_dir/cws-gateway.service" || return 1
 	if [[ ${appliance_dry_run:-0} -ne 1 ]]; then
 		chown "$user:$user" "$unit_dir/cws-gateway.service"
@@ -134,18 +193,19 @@ gateway_reroute() {
 # accordingly. Turning off is a no-op unless a gateway was set up (so a
 # never-kiosk box never touches the tunnel). The kasm Basic gate stays on;
 # the gateway injects it, so 'off' just points the hostname back at kasm.
-# $1=user $2=display $3=kasm_port $4=hostname $5=on|off
+# $1=user $2=display $3=kasm_port $4=hostname $5=on|off $6=role(admin|member)
 gateway_route() {
 	local user="$1"
 	local display="$2"
 	local kasm_port="$3"
 	local hostname="$4"
 	local mode="$5"
+	local role="${6:-member}"
 	local gport
 	gport=$(gateway_port "$display")
 
 	if [[ $mode == on ]]; then
-		gateway_setup "$user" "$display" "$kasm_port" || return 1
+		gateway_setup "$user" "$display" "$kasm_port" "$role" || return 1
 		gateway_reroute "$hostname" "$gport" || return 1
 	else
 		local home unit

@@ -304,7 +304,7 @@ cmd_add() {
 	if [[ ${appliance_kiosk:-0} -eq 1 ]]; then
 		kasmvnc_set_default_browser "$name" || return 1
 		gateway_route "$name" "$display" "$port" "$member_host" on \
-			|| return 1
+			member || return 1
 	fi
 
 	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then

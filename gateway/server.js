@@ -43,6 +43,20 @@ const CRED = process.env.CWS_GW_CRED || '';
 const SECRET_FILE = process.env.CWS_GW_SECRET || '';
 const WWW = process.env.CWS_GW_WWW || path.join(__dirname, 'www');
 const SCALE_FILE = process.env.CWS_GW_SCALE_FILE || '';
+// Role for this gateway instance: 'admin' (the box owner) exposes the
+// monitoring views; 'member' does not register them at all.
+const ROLE = process.env.CWS_GW_ROLE === 'admin' ? 'admin' : 'member';
+// Local bridge service (folder/clipboard/screen-share) fronted behind the
+// login cookie so the user never handles the bridge's raw token URL.
+const BRIDGE_PORT = parseInt(process.env.CWS_GW_BRIDGE_PORT || '0', 10);
+const BRIDGE_TOKEN_FILE = process.env.CWS_GW_BRIDGE_TOKEN || '';
+// Read-only fleet snapshot the root collector writes (admin only).
+const FLEET_FILE = process.env.CWS_GW_FLEET || '';
+
+function bridgeToken() {
+	try { return fs.readFileSync(BRIDGE_TOKEN_FILE, 'utf8').trim(); }
+	catch (_) { return ''; }
+}
 
 const COOKIE = 'cws_gw';
 const SESSION_TTL_S = 30 * 24 * 60 * 60; // 30 days
@@ -187,7 +201,7 @@ function handleLoginPost(req, res) {
 		if (passwordOk(params.get('password'))) {
 			recordScale(params.get('dpr'));
 			setSessionCookie(res);
-			res.writeHead(302, { Location: '/' }).end();
+			res.writeHead(302, { Location: '/home' }).end();
 		} else {
 			res.writeHead(303, { Location: '/cws-login?e=1' }).end();
 		}
@@ -218,10 +232,33 @@ const server = http.createServer((req, res) => {
 	if (!isAuthed(req)) {
 		return res.writeHead(302, { Location: '/cws-login' }).end();
 	}
-	// Pin kiosk client defaults on the bare root so every entry point
-	// (PWA start_url, login redirect, a direct visit) loads the kasm
-	// client with the on-screen keyboard control enabled — it is off by
-	// default and phones have no other way to summon the soft keyboard.
+
+	// --- homepage hub (the post-login landing) ---
+	if (p === '/home') return serveAsset('home.html', res);
+	if (p === '/cws-home.js') return serveAsset('cws-home.js', res);
+	if (p === '/api/me') {
+		res.writeHead(200, { 'Content-Type': 'application/json' });
+		return res.end(JSON.stringify({ role: ROLE }));
+	}
+
+	// --- admin monitoring (role-gated: the routes simply do not exist on
+	// a member gateway, so there is nothing to reach even by guessing) ---
+	if (p === '/admin' || p.startsWith('/admin/') || p === '/api/fleet') {
+		if (ROLE !== 'admin') return res.writeHead(404).end('not found');
+		if (p === '/admin' || p === '/admin/') return serveAsset('admin.html', res);
+		if (p === '/admin/cws-admin.js') return serveAsset('cws-admin.js', res);
+		if (p === '/api/fleet') return serveFleet(res);
+		return res.writeHead(404).end('not found');
+	}
+
+	// --- bridge, behind the cookie, with its token injected server-side
+	// so the user never handles a token URL ---
+	if (p === '/bridge' || p.startsWith('/bridge/')) {
+		return proxyBridge(req, res);
+	}
+
+	// The kiosk client lives at '/': pin the on-screen keyboard control
+	// (off by default; phones have no other way to summon the keyboard).
 	if (url === '/') {
 		return res.writeHead(302, {
 			Location: '/?virtual_keyboard_visible=true',
@@ -249,9 +286,44 @@ function proxyHttp(req, res) {
 	req.pipe(up);
 }
 
-// WebSocket (kasm /websockify): gate on the cookie, then splice raw TCP.
+// Proxy a /bridge* request to the local bridge, injecting its token into
+// the query so the cookie (not a token URL) is what gates access.
+function proxyBridge(req, res) {
+	if (!BRIDGE_PORT) return res.writeHead(404).end('bridge not configured');
+	const [pathPart, q] = (req.url || '/').split('?');
+	const params = new URLSearchParams(q || '');
+	params.set('t', bridgeToken());
+	const up = http.request({
+		host: '127.0.0.1', port: BRIDGE_PORT, method: req.method,
+		path: pathPart + '?' + params.toString(), headers: req.headers,
+	}, (upRes) => {
+		res.writeHead(upRes.statusCode || 502, upRes.headers);
+		upRes.pipe(res);
+	});
+	up.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end('bridge error'); });
+	req.pipe(up);
+}
+
+// Serve the read-only fleet snapshot the root collector writes.
+function serveFleet(res) {
+	fs.readFile(FLEET_FILE, (err, buf) => {
+		if (err) {
+			res.writeHead(200, { 'Content-Type': 'application/json' });
+			return res.end('{"error":"snapshot not ready","members":[]}');
+		}
+		res.writeHead(200, { 'Content-Type': 'application/json' });
+		res.end(buf);
+	});
+}
+
+// WebSocket: gate on the cookie, then splice raw TCP. /bridge* upgrades go
+// to the bridge (token injected); everything else to kasm (Basic injected).
 server.on('upgrade', (req, socket, head) => {
 	if (!isAuthed(req)) { socket.destroy(); return; }
+	const p = (req.url || '/').split('?')[0];
+	if ((p === '/bridge' || p.startsWith('/bridge/')) && BRIDGE_PORT) {
+		return spliceBridgeWs(req, socket, head);
+	}
 	const up = net.connect(UPSTREAM, '127.0.0.1', () => {
 		// replay the client's upgrade request, injecting the kasm Basic
 		// header (skip any client-sent Authorization so ours wins)
@@ -271,6 +343,27 @@ server.on('upgrade', (req, socket, head) => {
 	up.on('error', () => socket.destroy());
 	socket.on('error', () => up.destroy());
 });
+
+// Bridge WebSocket upgrade: replay to the bridge port with the token
+// injected into the request-line query.
+function spliceBridgeWs(req, socket, head) {
+	const [pathPart, q] = (req.url || '/').split('?');
+	const params = new URLSearchParams(q || '');
+	params.set('t', bridgeToken());
+	const up = net.connect(BRIDGE_PORT, '127.0.0.1', () => {
+		let raw = `${req.method} ${pathPart}?${params.toString()} HTTP/1.1\r\n`;
+		for (let i = 0; i < req.rawHeaders.length; i += 2) {
+			raw += `${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}\r\n`;
+		}
+		raw += '\r\n';
+		up.write(raw);
+		if (head && head.length) up.write(head);
+		socket.pipe(up);
+		up.pipe(socket);
+	});
+	up.on('error', () => socket.destroy());
+	socket.on('error', () => up.destroy());
+}
 
 server.listen(PORT, '127.0.0.1', () => {
 	console.error(`[gateway] listening on 127.0.0.1:${PORT}`

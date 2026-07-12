@@ -209,16 +209,17 @@ reconfigure_user() {
 	local profile="$3"
 	local display="${4:-1}"
 	local hostname="${5:-}"
+	local role="${6:-member}"
 	case "$profile" in
 		kasmvnc) profile_kasmvnc_write_config "$user" "$port" \
 			|| return 1
 			if [[ ${appliance_kiosk:-0} -eq 1 ]]; then
 				kasmvnc_set_default_browser "$user" || return 1
 				gateway_route "$user" "$display" "$port" \
-					"$hostname" on || return 1
+					"$hostname" on "$role" || return 1
 			else
 				gateway_route "$user" "$display" "$port" \
-					"$hostname" off || return 1
+					"$hostname" off "$role" || return 1
 			fi ;;
 	esac
 	install_autostart "$user"
@@ -251,13 +252,15 @@ run_reconfigure() {
 	# there) — so `cws kiosk on && cws reconfigure` is self-sufficient.
 	if [[ $appliance_kiosk -eq 1 && $profile == kasmvnc ]]; then
 		profile_kasmvnc_install_kiosk_deps || return 1
+		fleet_collector_install || return 1
 	fi
 	# Session hostnames drive the kiosk gateway's tunnel reroute: primary
 	# from the conf, members derived from the base.
 	local base_host
 	base_host=$(grep -m1 '^hostname=' "$conf" 2> /dev/null | cut -d= -f2)
+	# The reconfigure target is the box owner -> admin; members -> member.
 	reconfigure_user "$user" "$appliance_kasm_base_port" "$profile" \
-		1 "$base_host" || return 1
+		1 "$base_host" admin || return 1
 	local reg="$appliance_etc/members.tsv"
 	if [[ -f $reg ]]; then
 		local name display port _rest mhost
@@ -268,7 +271,7 @@ run_reconfigure() {
 			[[ -n $base_host ]] && mhost=$(tunnel_api_child_hostname \
 				"$name" "$base_host")
 			reconfigure_user "$name" "$port" "$profile" \
-				"$display" "$mhost" || return 1
+				"$display" "$mhost" member || return 1
 		done < "$reg"
 	fi
 	log_info 'reconfigure complete; effective on next session start'
@@ -439,6 +442,7 @@ main() {
 		printf 'profile=%s\n' "$profile"
 		printf 'hostname=%s\n' "$hostname"
 		printf 'kiosk=%s\n' "$appliance_kiosk"
+		printf 'owner=%s\n' "$user"
 	} | appliance_force=1 write_file "$appliance_etc/appliance.conf" \
 		|| return 1
 
@@ -458,6 +462,11 @@ main() {
 	esac
 
 	install_autostart "$user" || return 1
+
+	# Kiosk: the admin dashboard reads a root-collected fleet snapshot.
+	if [[ ${appliance_kiosk:-0} -eq 1 && $profile == kasmvnc ]]; then
+		fleet_collector_install || return 1
+	fi
 
 	# Put the cws CLI on PATH so post-install management is one command,
 	# and the guardian launch wrapper where autostart entries expect it.
