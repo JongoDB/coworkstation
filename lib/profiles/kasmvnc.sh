@@ -58,7 +58,10 @@ kasmvnc_deb_url() {
 # execute default Web Browser"), and the appliance ships none.
 profile_kasmvnc_install_kiosk_deps() {
 	if ! command -v matchbox-window-manager > /dev/null 2>&1; then
-		pkg_install matchbox-window-manager x11-xserver-utils || return 1
+		# matchbox = kiosk WM; x11-xserver-utils = xsetroot backdrop;
+		# xdotool = the supervisor's window detection (no-strand recycle).
+		pkg_install matchbox-window-manager x11-xserver-utils xdotool \
+			|| return 1
 	else
 		log_info 'kiosk WM (matchbox) already installed'
 	fi
@@ -317,12 +320,45 @@ fi
 xsetroot -solid '#1c1c1c' 2> /dev/null || true
 # Minimal kiosk WM: force-fullscreen the top window, no titlebar/taskbar.
 matchbox-window-manager -use_titlebar no &
-# Supervisor: keep Claude alive. cws-launch execs the guarded Claude (its
-# config backups + stale-singleton clearing intact); when Claude exits,
-# relaunch. The sleep paces a crash loop.
+
+# Is a real (not the 10x10 helper) Claude window currently on screen?
+claude_up() {
+	for w in $(xdotool search --onlyvisible --class '[Cc]laude-desktop' \
+		2> /dev/null); do
+		eval "$(xdotool getwindowgeometry --shell "$w" 2> /dev/null)"
+		[ "${WIDTH:-0}" -gt 200 ] 2> /dev/null && return 0
+	done
+	return 1
+}
+# Is the OAuth browser on screen? (Claude opens it for "Continue with
+# Google"; don't recycle Claude out from under a sign-in.)
+browser_up() {
+	xdotool search --onlyvisible --class '[Cc]hrom' 2> /dev/null | grep -q .
+}
+
+# Supervisor: never strand the user on the bare backdrop. cws-launch execs
+# the guarded Claude; when it EXITS, relaunch. There is no taskbar/tray in
+# kiosk, so the in-app close/minimize can instead leave the process alive
+# with no window — a blank container. So while Claude runs, if the screen
+# goes blank (no Claude window AND no OAuth browser) for a few seconds,
+# recycle the instance to bring Claude back. The `seen` guard avoids
+# recycling during the initial cold start (before the first window paints).
 while :; do
-	( cws-launch ) || true
-	sleep 2
+	cws-launch &
+	cpid=$!
+	seen=0
+	misses=0
+	while kill -0 "$cpid" 2> /dev/null; do
+		if claude_up || browser_up; then
+			seen=1
+			misses=0
+		elif [ "$seen" = 1 ]; then
+			misses=$((misses + 1))
+			[ "$misses" -ge 3 ] && { kill "$cpid" 2> /dev/null; break; }
+		fi
+		sleep 1.5
+	done
+	sleep 1
 done
 EOF
 }

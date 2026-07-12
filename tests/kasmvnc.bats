@@ -235,6 +235,15 @@ _xstartup_stub_bin() {
 	[[ $out != *startxfce4* ]]                 # no desktop
 }
 
+@test "kasmvnc_xstartup kiosk: supervisor recycles a stranded Claude" {
+	local out
+	out=$(kasmvnc_xstartup kiosk)
+	[[ $out == *'claude_up'* ]]            # detect a real Claude window
+	[[ $out == *'browser_up'* ]]           # leave the OAuth browser alone
+	[[ $out == *'xdotool search'* ]]       # window detection
+	[[ $out == *'kill "$cpid"'* ]]         # recycle the lingering instance
+}
+
 # Stub the kiosk runtime deps so we can run the generated xstartup and
 # observe the launch path. The supervisor loop is infinite by design, so
 # the sleep stub SIGTERMs the loop shell ($PPID) after the first pass —
@@ -289,6 +298,7 @@ _kiosk_stub_bin() {
 	[[ $status -eq 0 ]]
 	[[ $output == *'matchbox-window-manager'* ]]
 	[[ $output == *'x11-xserver-utils'* ]]
+	[[ $output == *'xdotool'* ]]
 	[[ $output == *'BROWSER'* ]]
 	# matchbox already present -> skip WM install, still ensure browser
 	command() { return 0; }
