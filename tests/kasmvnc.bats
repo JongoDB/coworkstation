@@ -279,17 +279,58 @@ _kiosk_stub_bin() {
 	[[ -d $TEST_TMP/.config/cws-sessions/50 ]]
 }
 
-@test "install_kiosk_deps: installs matchbox, idempotent when present" {
-	# not installed -> installs matchbox + xsetroot provider
+@test "install_kiosk_deps: installs matchbox + the browser, idempotent" {
+	# isolate the browser install (tested separately) so no network here
+	kasmvnc_install_default_browser() { printf 'BROWSER\n'; }
+	# not installed -> installs matchbox + xsetroot provider + browser
 	command() { return 1; }
 	pkg_install() { printf 'PKG %s\n' "$*"; }
 	run profile_kasmvnc_install_kiosk_deps
 	[[ $status -eq 0 ]]
 	[[ $output == *'matchbox-window-manager'* ]]
 	[[ $output == *'x11-xserver-utils'* ]]
-	# already present -> no install
+	[[ $output == *'BROWSER'* ]]
+	# matchbox already present -> skip WM install, still ensure browser
 	command() { return 0; }
 	run profile_kasmvnc_install_kiosk_deps
 	[[ $status -eq 0 ]]
 	[[ $output == *'already installed'* ]]
+	[[ $output == *'BROWSER'* ]]
+}
+
+@test "kasmvnc_browser_desktop: chrome on amd64, chromium elsewhere" {
+	appliance_arch() { printf 'amd64'; }
+	[[ $(kasmvnc_browser_desktop) == google-chrome.desktop ]]
+	appliance_arch() { printf 'arm64'; }
+	[[ $(kasmvnc_browser_desktop) == chromium.desktop ]]
+}
+
+@test "install_default_browser: dry-run installs nothing" {
+	appliance_arch() { printf 'amd64'; }
+	appliance_dry_run=1
+	run kasmvnc_install_default_browser
+	[[ $status -eq 0 ]]
+	[[ $output == *'DRY-RUN: install default browser (google-chrome.desktop)'* ]]
+}
+
+@test "install_default_browser: amd64 idempotent when chrome present" {
+	appliance_arch() { printf 'amd64'; }
+	# chrome already installed -> no repo/curl, just the alternative
+	command() { [[ $2 == google-chrome-stable ]] && return 0; builtin command "$@"; }
+	local calls="$TEST_TMP/calls"
+	curl() { echo "curl $*" >> "$calls"; }
+	run_cmd() { echo "run_cmd $*" >> "$calls"; }
+	run kasmvnc_install_default_browser
+	[[ $status -eq 0 ]]
+	[[ ! -f $calls ]] || ! grep -q curl "$calls"       # no download
+	grep -q 'update-alternatives' "$calls"             # sets the fallback
+}
+
+@test "set_default_browser: points xdg-mime at the browser desktop" {
+	appliance_arch() { printf 'amd64'; }
+	run_as_user() { shift; printf 'AS %s\n' "$*"; }
+	run kasmvnc_set_default_browser alice
+	[[ $status -eq 0 ]]
+	[[ $output == *'xdg-mime default google-chrome.desktop'* ]]
+	[[ $output == *'x-scheme-handler/https'* ]]
 }

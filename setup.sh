@@ -197,7 +197,10 @@ reconfigure_user() {
 	local profile="$3"
 	case "$profile" in
 		kasmvnc) profile_kasmvnc_write_config "$user" "$port" \
-			|| return 1 ;;
+			|| return 1
+			if [[ ${appliance_kiosk:-0} -eq 1 ]]; then
+				kasmvnc_set_default_browser "$user" || return 1
+			fi ;;
 	esac
 	install_autostart "$user"
 }

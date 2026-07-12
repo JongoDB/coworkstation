@@ -52,13 +52,81 @@ kasmvnc_deb_url() {
 
 # Kiosk mode replaces XFCE with a minimal WM. matchbox-window-manager is
 # the single-app kiosk WM (force-fullscreens the top window);
-# x11-xserver-utils provides xsetroot for the branded backdrop.
+# x11-xserver-utils provides xsetroot for the branded backdrop. A default
+# browser is also required: Claude's "Continue with Google" OAuth opens
+# the system browser for the handoff (without one it dies with "Failed to
+# execute default Web Browser"), and the appliance ships none.
 profile_kasmvnc_install_kiosk_deps() {
-	if command -v matchbox-window-manager > /dev/null 2>&1; then
+	if ! command -v matchbox-window-manager > /dev/null 2>&1; then
+		pkg_install matchbox-window-manager x11-xserver-utils || return 1
+	else
 		log_info 'kiosk WM (matchbox) already installed'
+	fi
+	kasmvnc_install_default_browser
+}
+
+# The kiosk desktop-file id of the default browser (Chrome on amd64,
+# Chromium elsewhere — Google ships no arm64 Chrome .deb).
+kasmvnc_browser_desktop() {
+	if [[ $(appliance_arch) == amd64 ]]; then
+		printf 'google-chrome.desktop'
+	else
+		printf 'chromium.desktop'
+	fi
+}
+
+# Install a default web browser for the OAuth handoff and set it as the
+# system fallback. amd64 -> Google Chrome (most reliable for Google
+# sign-in); other arches -> Chromium (Google ships no arm64 Chrome deb).
+kasmvnc_install_default_browser() {
+	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
+		printf 'DRY-RUN: install default browser (%s)\n' \
+			"$(kasmvnc_browser_desktop)"
 		return 0
 	fi
-	pkg_install matchbox-window-manager x11-xserver-utils
+	if [[ $(appliance_arch) != amd64 ]]; then
+		if ! command -v chromium-browser > /dev/null 2>&1 \
+			&& ! command -v chromium > /dev/null 2>&1; then
+			pkg_install chromium-browser || pkg_install chromium \
+				|| log_warn 'no browser installed; Google sign-in' \
+					'(Continue with Google) will fail on this arch'
+		fi
+		return 0
+	fi
+	local bin='/usr/bin/google-chrome-stable'
+	if ! command -v google-chrome-stable > /dev/null 2>&1; then
+		local key='/usr/share/keyrings/google-chrome.gpg'
+		local list='/etc/apt/sources.list.d/google-chrome.list'
+		if [[ ! -f $key ]]; then
+			curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+				| gpg --dearmor -o "$key" 2> /dev/null || return 1
+		fi
+		printf 'deb [arch=amd64 signed-by=%s] %s stable main' "$key" \
+			'http://dl.google.com/linux/chrome/deb/' \
+			| write_file "$list" || return 1
+		run_cmd apt-get update || return 1
+		pkg_install google-chrome-stable || return 1
+	fi
+	# System fallback so sensible-browser/x-www-browser resolve too.
+	run_cmd update-alternatives --install /usr/bin/x-www-browser \
+		x-www-browser "$bin" 200 2> /dev/null || true
+	run_cmd update-alternatives --set x-www-browser "$bin" 2> /dev/null || true
+}
+
+# Point a user's xdg defaults at the installed browser so Claude's
+# xdg-open handoff (http/https + the OAuth redirect) resolves. Writes
+# ~/.config/mimeapps.list; no DISPLAY needed. $1 = user.
+kasmvnc_set_default_browser() {
+	local user="$1"
+	if [[ ${appliance_dry_run:-0} -eq 1 ]]; then
+		printf 'DRY-RUN: set default browser for %s\n' "$user"
+		return 0
+	fi
+	local desktop
+	desktop=$(kasmvnc_browser_desktop)
+	run_as_user "$user" xdg-mime default "$desktop" \
+		x-scheme-handler/http x-scheme-handler/https text/html \
+		2> /dev/null || true
 }
 
 profile_kasmvnc_install_packages() {
@@ -428,6 +496,7 @@ profile_kasmvnc_apply() {
 	profile_kasmvnc_install_packages || return 1
 	if [[ ${appliance_kiosk:-0} -eq 1 ]]; then
 		profile_kasmvnc_install_kiosk_deps || return 1
+		kasmvnc_set_default_browser "$user" || return 1
 	fi
 	profile_kasmvnc_setup_cert "$user" || return 1
 	profile_kasmvnc_write_config "$user" "$port" || return 1

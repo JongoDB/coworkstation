@@ -21,6 +21,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   immersive experience — see
   `docs/plans/2026-07-12-immersive-claude-kiosk-design.md`.
 
+- **Default browser for OAuth sign-in (kiosk).** Claude's "Continue with
+  Google" opens the system browser for the OAuth handoff; the appliance
+  shipped none, so sign-in died with "Failed to execute default Web
+  Browser. Input/output error." Kiosk setup now installs a default
+  browser (Google Chrome on amd64 — most reliable for Google sign-in;
+  Chromium on other arches) and points each user's xdg defaults at it,
+  applied on setup and `cws kiosk on`/`reconfigure`. The `claude://`
+  redirect handler (already registered by Claude Desktop) closes the
+  loop back into the app.
+
 - **Optional HiDPI scaling in `cws-launch`** (`CWS_DEVICE_SCALE` or a
   `device-scale` file in the session config home) passes
   `--force-device-scale-factor` to Claude for crisp rendering on retina
