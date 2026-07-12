@@ -321,14 +321,15 @@ xsetroot -solid '#1c1c1c' 2> /dev/null || true
 # Minimal kiosk WM: force-fullscreen the top window, no titlebar/taskbar.
 matchbox-window-manager -use_titlebar no &
 
-# Is a real (not the 10x10 helper) Claude window currently on screen?
+# Is a Claude window currently on screen? kasmVNC/xdotool report the
+# window as viewable only while it is actually shown — when Claude hides
+# to tray (its close/minimize) every Claude window drops out of
+# --onlyvisible, even the tiny helper — so a non-empty result means Claude
+# is up. (Kept deliberately simple: an earlier getwindowgeometry filter
+# failed silently under dash, leaving the supervisor blind.)
 claude_up() {
-	for w in $(xdotool search --onlyvisible --class '[Cc]laude-desktop' \
-		2> /dev/null); do
-		eval "$(xdotool getwindowgeometry --shell "$w" 2> /dev/null)"
-		[ "${WIDTH:-0}" -gt 200 ] 2> /dev/null && return 0
-	done
-	return 1
+	[ -n "$(xdotool search --onlyvisible --class '[Cc]laude-desktop' \
+		2> /dev/null)" ]
 }
 # Is the OAuth browser on screen? (Claude opens it for "Continue with
 # Google"; don't recycle Claude out from under a sign-in.)
