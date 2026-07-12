@@ -1,0 +1,14 @@
+{
+  "name": "Coworkstation",
+  "short_name": "Coworkstation",
+  "description": "Your Claude workspace.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1c1c1c",
+  "theme_color": "#1c1c1c",
+  "icons": [
+    { "src": "/cws-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -39,7 +39,9 @@ jobs:
           node --check testbench/vm-bench-mcp.js
           node --check bridge/server.js
           node --check bridge/client-screen-mcp.js
+          node --check gateway/server.js
           node --check tests/helpers/bridge-test.js
+          node --check tests/helpers/gateway-test.js
           node --check tests/helpers/mcp-client.js
           node --check tests/helpers/qmp-mock-test.js
 
