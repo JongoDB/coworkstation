@@ -176,9 +176,27 @@ native inertial scroll — usable, tunable via kasm gesture settings.
 **Soft keyboard — the honest weak point.** VNC sees only pixels, so
 tapping a text field cannot *auto*-summon the native keyboard. The
 standard fix (kasmVNC supports it): a keyboard button focuses a hidden
-input → the native keyboard appears → keystrokes forward to Claude. We
-surface it as a prominent floating button. The **clipboard bridge** is
-the heavy-text escape hatch (compose natively, paste in). Spike #2.
+input → the native keyboard appears → keystrokes forward to Claude. The
+**clipboard bridge** is the heavy-text escape hatch (compose natively,
+paste in).
+
+**Spike #2 — confirmed on a live Android phone (2026-07-12).** The
+mechanism is kasmVNC's **Settings → "Show Virtual Keyboard Control"**,
+which reveals a keyboard button (lower-right) that raises the native
+keyboard. It works but is **off by default** and the button is a small,
+finnicky tap target. Since the gateway serves the client, the kiosk must:
+1. **default that setting on** (ship the kasm client config / localStorage
+   preset with the virtual-keyboard control enabled), and
+2. **enlarge/reposition the button** into a comfortable tap target
+   (client CSS override served by the gateway).
+Tracked as a gateway client-config task.
+
+**Browser for OAuth (found live, fixed).** Separately, Claude's
+"Continue with Google" opens the system browser for the OAuth handoff;
+the appliance shipped none, so sign-in failed with "Failed to execute
+default Web Browser." Kiosk setup now installs a default browser
+(Chrome/Chromium) and sets the per-user xdg default; the `claude://`
+handler closes the loop back into the app. (See CHANGELOG.)
 
 **Device-class handling (one adaptive PWA):**
 - **Phone (Android/iOS):** narrow viewport → Claude mobile layout;
