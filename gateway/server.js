@@ -219,8 +219,12 @@ const server = http.createServer((req, res) => {
 
 function proxyHttp(req, res) {
 	const headers = Object.assign({}, req.headers);
+	// Node lowercases inbound header names; kasm's websockify Basic-auth
+	// parser matches "Authorization" CASE-SENSITIVELY, so drop any
+	// lowercase copy and inject with the capitalized name it expects.
+	delete headers.authorization;
 	const auth = upstreamAuth();
-	if (auth) headers.authorization = auth;   // kasm Basic, injected
+	if (auth) headers.Authorization = auth;   // kasm Basic, injected
 	const up = http.request({
 		host: '127.0.0.1', port: UPSTREAM, method: req.method,
 		path: req.url, headers: headers,
