@@ -6,6 +6,10 @@ conventions, everything already built, the gotchas that will bite you, and
 what's planned. The repo itself is the source of truth — this points you at
 the right parts of it.
 
+Also read **`docs/assistant-memory-seed.md`** — the prior assistant's
+persistent memory notes (autonomy expectations + box-access facts),
+reproduced verbatim so you can seed your own memory system with them.
+
 ---
 
 ## 1. What Coworkstation is
