@@ -49,9 +49,9 @@ apps' private storage (impossible without root — see §8).
 ## 3. Chosen architecture (three independent layers)
 
 ```
-PHONE:  [ cloudflared (Termux) ]  +  [ mobilerun Portal (a11y svc + local HTTP :8080) ]  +  [ Syncthing-Fork ]
-BOX:    [ Cloudflare Tunnel ]  →  cws phone {screenshot|tap|text|key|swipe|status|tree}  +  [ Syncthing ]
-                     │  curl https://phone-<user>.<zone>/... -H "Bearer <token>"  (+ CF Access svc-token)
+PHONE:  [ NetBird app ]  +  [ mobilerun Portal (a11y svc + local HTTP :8080) ]  +  [ Syncthing-Fork ]
+BOX:    [ NetBird overlay ]  →  cws phone {screenshot|tap|text|key|swipe|status|tree}  +  [ Syncthing ]
+                     │  curl http://<phone-netbird-ip>:8080/... -H "Bearer <token>"
                      └─ Claude runs these via Cowork's device_bash  (mirrors `cws client screenshot`)
 ```
 
@@ -64,11 +64,12 @@ consent), and is driven by plain `curl`→JSON. Full comparison and the rejected
 options are in the research trail; `docs/HANDOFF.md` §7 tracked the original
 (dropped) scrcpy/wireless-ADB idea.
 
-**Why Cloudflare Tunnel for transport:** the agent-drivable control paths all need
-the box to reach a port on the phone; over CGNAT that needs an outbound-originated
-tunnel. Cloudflare Tunnel reuses the appliance's existing stack (§4.2) instead of a
-separate mesh. Files are the exception — Syncthing brings its own relay,
-independent of the tunnel.
+**Why a NetBird mesh for transport:** the box must reach a port on the phone, and
+over CGNAT that needs an outbound-originated overlay. NetBird (self-hostable,
+WireGuard-based) has **native apps on Android/iOS/iPadOS/macOS/Windows/Linux**, so
+one private mesh serves every client device and future iOS control — and a real
+VPN app persists under One UI far better than a Termux process (§4.2). Files are
+the exception — Syncthing brings its own relay, independent of the mesh.
 
 ## 4. Components
 
@@ -77,30 +78,27 @@ independent of the tunnel.
   the AccessibilityService (`com.mobilerun.portal/.service.MobilerunAccessibilityService`)
   and the local HTTP socket server on `:8080`.
 - **Mobilerun Keyboard (IME)** selected — for robust Unicode text into any field.
-- **Termux + `cloudflared`** (see §4.2, §6) — originates the Cloudflare Tunnel
-  exposing Portal `:8080` to the box; auto-started at boot via **Termux:Boot**.
+- **NetBird app** (see §4.2, §6) — joins the phone to the private overlay so the
+  box can reach Portal `:8080`; a proper VPN app, robust under One UI.
 - **Syncthing-Fork** (Catfriend1) — two-way file sync of shared storage; the
   original Syncthing-Android app was discontinued (Oct 2024).
 
-### 4.2 Transport — Cloudflare Tunnel (decided; reuses the appliance's stack)
-The appliance is already Cloudflare-fronted and manages ingress via the
-Cloudflare API (`lib/tunnel-api.sh`). We reuse it rather than run a separate mesh:
-- The **phone runs `cloudflared`** (in **Termux**) originating a named tunnel that
-  exposes its local Portal `:8080`. Outbound-only from the phone → works over
-  CGNAT/cellular with no LAN and no mesh control plane to operate.
-- The box manages the phone's tunnel + ingress + DNS via the Cloudflare API it
-  already speaks; `cws phone` targets the phone's Cloudflare hostname
-  (e.g. `phone-<user>.<zone>`), gated by a **Cloudflare Access service token**
-  (only the box holds it) **plus** the Portal bearer token — defence in depth.
-- **Honest tradeoff:** `cloudflared` is a **second phone-side background process**
-  (Portal is the first) running in **Termux**, which One UI kills more eagerly
-  than a proper app. It needs **Termux:Boot** + the same battery exemptions as
-  Portal, and its unattended survival is now part of the spike gate (§8). If it
-  proves flaky under Doze, the fallback *for this leg only* is a proper mesh-VPN
-  app (Netbird/Tailscale); the rest of the design is unchanged. A cleaner future
-  option that drops Termux entirely: point Portal's built-in **"Connect to Host"**
-  (reverse WebSocket) at a self-hosted endpoint behind the box's tunnel —
-  deferred (needs a mobilerun-protocol-compatible server).
+### 4.2 Transport — NetBird mesh (decided; cross-platform)
+Chosen for **cross-platform reach**: NetBird ships native apps for Android, iOS,
+iPadOS, macOS, Windows, and Linux, so one private overlay connects the box to the
+phone today and to any other client (and future iOS control) tomorrow.
+- The **phone runs the NetBird app** (a proper foreground VPN service — persists
+  under One UI far better than a Termux process); the box joins the same overlay
+  and reaches the Portal at the phone's **NetBird IP:8080**. Outbound-originated,
+  WireGuard data plane, signal + relay/TURN for NAT traversal → CGNAT-ok.
+- FOSS + self-hostable: client BSD-3-Clause; management/signal/relay AGPLv3.
+- **Cost (honest):** self-hosting NetBird's **control plane** (management + signal
+  + relay, typically Docker) is **new appliance infra**, separate from the
+  existing Cloudflare stack — which stays for the *public* gateway. They're
+  complementary: Cloudflare fronts public service ingress; NetBird is the private
+  device mesh. To validate fast, the Stage-2 spike can use NetBird's **managed
+  free tier**, then move to self-hosted for production.
+- `cws phone` binds to the phone's **NetBird IP**, never its LAN IP.
 
 ### 4.3 Box side — `cws phone` porcelain
 - A CLI (following the `cws client` pattern) that `curl`s the phone's Portal API.
@@ -155,15 +153,14 @@ permission, enroll in the mesh.* One helper wraps it (adb once; then no adb):
 5. Select the Mobilerun IME (robust text); apply the **One UI hardening**
    (Unrestricted battery · Never-sleeping app · turn **off** "Pause app activity
    if unused" · Keep Screen Awake) — the settings that keep the service alive.
-6. Install **Termux + `cloudflared`**; run a named tunnel exposing
-   `localhost:8080` (token-based, auto-start via Termux:Boot). The box creates the
-   tunnel route + DNS + Access service-token via the Cloudflare API, then stores
-   the phone's **hostname + Portal token + service token** in `~/.config/cws-phone`.
+6. Install the **NetBird app** and enroll the phone in the overlay (setup key).
+   The box joins the same overlay; store the phone's **NetBird IP + Portal token**
+   in `~/.config/cws-phone`.
 7. Install/point **Syncthing-Fork** at the box's Syncthing for files.
 
-Phone footprint: **3 apps** — Portal, Termux (running `cloudflared`), Syncthing —
-plus the Portal IME and a handful of one-time toggles. On mobile the on-phone taps
-are the owner's (we never type into their phone).
+Phone footprint: **3 apps** — Portal, NetBird, Syncthing — plus the Portal IME and
+a handful of one-time toggles. On mobile the on-phone taps are the owner's (we
+never type into their phone).
 
 ## 7. Security posture
 
@@ -194,10 +191,10 @@ box-side watchdog (health-check + a re-arm), or fall back to **droidVNC-NG**
 off a free human live-view for the immersive-kiosk story.
 
 **Transport not yet tested.** The spike proved the Portal over the **LAN**; the
-chosen **Cloudflare Tunnel** path (cloudflared-in-Termux) is unvalidated. Add a
-Stage-2 to the spike: cloudflared survives reboot+Doze in Termux, and the box
-reaches the Portal through the phone's Cloudflare hostname end-to-end. This is the
-second thing to clear before implementation.
+chosen **NetBird overlay** is unvalidated end-to-end. Stage-2: the NetBird app
+survives reboot+Doze, and the box reaches the Portal at the phone's NetBird IP.
+Simpler than a Termux tunnel (the Portal itself is unchanged, and a VPN app
+persists better) — but still a gate before implementation.
 
 ## 9. Testing
 
@@ -231,10 +228,11 @@ optional health-timer via a `phone.sh` provisioner; tests gate green; deploy via
 
 ## 12. Open questions
 
-- **Transport: Cloudflare Tunnel (decided).** Reuses the appliance's existing
-  Cloudflare stack; no separate mesh to operate. **Watch item:** the phone-side
-  `cloudflared`/Termux persistence under One UI Doze — validate in the soak
-  (§8); a mesh-VPN app is the fallback for that leg only.
+- **Transport: NetBird mesh (decided; cross-platform).** Native apps on
+  Android/iOS/iPadOS/macOS/Windows/Linux → one overlay for all clients + future
+  iOS. **Cost:** self-hosting the control plane is new infra (Cloudflare stays for
+  the public gateway); validate NetBird-app persistence under Doze in the soak
+  (§8).
 - **Multi-phone / multi-user**: v1 targets one companion phone; the config layout
   (`~/.config/cws-phone/`) leaves room per user.
 - **iOS**: deferred (Mac/WebDriverAgent leg; the accessibility-app model does not
